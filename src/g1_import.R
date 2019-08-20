@@ -25,7 +25,10 @@ cages2 <- cages2[-which(cages2$cage==3),]
 cages3 <- cages2
 cages3 <- cages3[-which(cages3$cage==26),]
 
-cages_to_write <- cages3
+# week 7: remove cage 9 (cage disturbance/mantid escape)
+cages4 <- cages3[-which(cages3$cage==9),]
 
+# assign cage data table version
+cages_to_write <- cages4
 # export sheet to update cage allocations
 write_csv(cages_to_write, here::here('results/g1_updated_cages.csv'))

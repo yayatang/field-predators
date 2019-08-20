@@ -5,7 +5,7 @@ library(tidyverse)
 library(zoo)
 
 #==== set seed + variable naming
-randID <- as.integer(20190731) # date run for randomization (maybe include in csV)
+randID <- as.integer(rand_date) # date run for randomization (maybe include in csV)
 set.seed(randID)
 # week <- 2 #***remove once there's a prompt, also for date
 
@@ -14,7 +14,7 @@ weighed_g <- read_csv(here::here(paste0('data/ghop_data_wk',week,'.csv')))
 weighed_g <- weighed_g[,1:3]
 colnames(weighed_g) <- c('ghop_tube', 'tube_mass', 'tube_ghop_mass')
 
-cage_alloc <- read_csv(here::here('results/1_updated_cages.csv'))
+cage_alloc <- read_csv(here::here('results/g1_updated_cages.csv'))
 receiving_ghops <- nrow(filter(cage_alloc, treatment!='control'))
 ghops_2weigh <- receiving_ghops + 4
 
@@ -66,5 +66,6 @@ g_write <- g_masses %>%
 
 write_csv(g_write, here::here(paste0('results/g2_ghops_include_wk',week,'.csv')))
 
-all50 <- left_join(weighed_g, g_write)
+all50 <- left_join(calc_g, g_write) %>% 
+    arrange(ghopID)
 write_csv(all50, here::here(paste0('results/g2_ghops_all_weighed_wk',week,'.csv')))
