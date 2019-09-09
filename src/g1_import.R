@@ -33,11 +33,11 @@ cages5 <-  cages3
 set.seed(20190905)
 cages5$wk9_rando <- runif(nrow(cages5))
 
+cages5_rand <- arrange(cages5, wk9_rando)
+
 split_ghop <- c(rep(9.1, 4), rep(9.2, 3), rep(9.3, 3))
 split_spiders <- c(rep(9.1, 4), rep(9.2, 3), rep(9.3, 3))
-split_mantids <- c(rep(9.1, 3), rep(9.2, 3), rep(9.3, 2))
-
-cages5_rand <- arrange(cages5, wk9_rando)
+split_mantids <- c(rep(9.1, 3), rep(9.2, 2), rep(9.3, 2))
 
 cages5_g <- cages5 %>% 
     filter(treatment=='ghop') %>% 
@@ -53,19 +53,28 @@ cages5_m <- cages5 %>%
     filter(treatment=='mantid') %>% 
     arrange(wk9_rando) %>% 
     mutate(feeding_wk = split_mantids,
-           predatorID = NA)
-#make sure you include the double feeding for cage 36!!!
+           predatorID = NA) # remove mantid ID from this week of cages
+
+# including the double feeding for cage 36
+extra_feeding36 <- cages5_m[which(cages5_m$cage==36),]
+extra_feeding36$feeding_wk <- 9.2
+extra_feeding36$wk9_rando <- runif(1)
+
+#update the mantid cage assignment table
+cages5_m_all <- bind_rows(cages5_m, extra_feeding36)
+
 #========
-cages5_all <- bind_rows(cages5_g, cages5_s, cages5_m)
+cages5_all <- bind_rows(cages5_g, cages5_s, cages5_m_all)
 wk9.1_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
                       m_rando = runif(3)) %>% 
     arrange(m_rando)
 wk9.2_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
                         m_rando = runif(3))%>% 
     arrange(m_rando)
-wk9.3_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
-                        m_rando = runif(3))%>% 
+wk9.3_mantids <- tibble(predatorID = c('M02', 'M05'), #removed M07 bc bad eater
+                        m_rando = runif(2))%>% 
     arrange(m_rando)
+
 
 #=========
 # find the relevant cages for 9.1 + assign them mantids

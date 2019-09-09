@@ -29,9 +29,10 @@ g_incl <- g_trt %>%
 g_calib <- filter(g_sorted, treatment == 'calib')
 ghops_all <- bind_rows(g_calib, g_incl)
 
+# maybe include a merge that has the old cage #
 datasheet_cages <- left_join(ghops_all, cage_alloc) %>% 
     arrange(cage) %>% 
-    select(block, cage, position, treatment, predatorID, ghopID)
+    select(block, cage, position, treatment, predatorID, ghopID, )
 datasheet_cages[which(datasheet_cages$treatment=='ghop'),]$treatment <- 'ghop carcass'
 
 # if(week == 5){
