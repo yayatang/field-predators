@@ -4,17 +4,17 @@
 library(tidyverse)
 library(zoo)
 
-#==== set seed + variable naming
+#==== set seed
 randID <- as.integer(rand_date) # date run for randomization (maybe include in csV)
 set.seed(randID)
-# week <- 2 #***remove once there's a prompt, also for date
 
-#===== import data
+#===== import ghop mass data
 weighed_g <- read_csv(here::here(paste0('data/ghop_data_wk',week,'.csv')))
 weighed_g <- weighed_g[,1:3]
 colnames(weighed_g) <- c('ghop_tube', 'tube_mass', 'tube_ghop_mass')
 
-cage_alloc <- read_csv(here::here('results/g1_updated_cages.csv'))
+# import the relevant cages w/ info for the week
+cage_alloc <- read_csv(here::here(paste0('results/g1_updated_cages_wk',week,'.csv')))
 receiving_ghops <- nrow(filter(cage_alloc, treatment!='control'))
 ghops_2weigh <- receiving_ghops + 4
 
@@ -28,12 +28,11 @@ calc_g <- weighed_g %>%
 # find_ghop_set <- function(num_ghops, masses) {
 #==========
 num_ghops <- ghops_2weigh
-fake_masses <- tibble(ghop_mass = runif(30)) %>%
-    arrange(ghop_mass)
+# fake_masses <- tibble(ghop_mass = runif(30)) %>%
+# arrange(ghop_mass)
 # g_masses <- fake_masses
 g_masses <- calc_g
 
-# if(nrow(g_masses) >= num_ghops){
 g_masses <- g_masses %>% 
     mutate(rolled_mean = rollapply(ghop_mass, num_ghops, mean, fill = NA, align='center'),
            rolled_median = rollapply(g_masses$ghop_mass, num_ghops, median, fill = NA, align='center'),
@@ -57,9 +56,6 @@ g_masses[q3,]$treatment <- 'calib'
 
 # }
 #===========
-
-#} else stop('not enough grasshoppers!')
-# }
 g_write <- g_masses %>% 
     filter(include==TRUE) %>% 
     select(ghopID, ghop_mass, rando, treatment)

@@ -1,8 +1,7 @@
 #==============================================
 # 1. Import cage allocation + update
 #==============================================
-library(readr)
-library(here)
+library(tidyverse)
 
 cages0 <-  read_csv(here::here('data/0_cage_allocation.csv'))
 
@@ -26,9 +25,79 @@ cages3 <- cages2
 cages3 <- cages3[-which(cages3$cage==26),]
 
 # week 7: remove cage 9 (cage disturbance/mantid escape)
-cages4 <- cages3[-which(cages3$cage==9),]
+#cages4 <- cages3[-which(cages3$cage==9),]  #un-removed bc of mantid switching
 
+# week 9.1: assign the feeding dates to all treatments
+cages5 <-  cages3
+# randomly assign cages to feedings
+set.seed(20190905)
+cages5$wk9_rando <- runif(nrow(cages5))
+
+split_ghop <- c(rep(9.1, 4), rep(9.2, 3), rep(9.3, 3))
+split_spiders <- c(rep(9.1, 4), rep(9.2, 3), rep(9.3, 3))
+split_mantids <- c(rep(9.1, 3), rep(9.2, 3), rep(9.3, 2))
+
+cages5_rand <- arrange(cages5, wk9_rando)
+
+cages5_g <- cages5 %>% 
+    filter(treatment=='ghop') %>% 
+    arrange(wk9_rando) %>% 
+    mutate(feeding_wk = split_ghop)
+
+cages5_s <- cages5 %>% 
+    filter(treatment=='spider') %>% 
+    arrange(wk9_rando) %>% 
+    mutate(feeding_wk = split_spiders)
+
+cages5_m <- cages5 %>% 
+    filter(treatment=='mantid') %>% 
+    arrange(wk9_rando) %>% 
+    mutate(feeding_wk = split_mantids,
+           predatorID = NA)
+#make sure you include the double feeding for cage 36!!!
+#========
+cages5_all <- bind_rows(cages5_g, cages5_s, cages5_m)
+wk9.1_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
+                      m_rando = runif(3)) %>% 
+    arrange(m_rando)
+wk9.2_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
+                        m_rando = runif(3))%>% 
+    arrange(m_rando)
+wk9.3_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
+                        m_rando = runif(3))%>% 
+    arrange(m_rando)
+
+#=========
+# find the relevant cages for 9.1 + assign them mantids
+cages5_9.1 <- cages5_all %>% 
+    filter(feeding_wk==9.1)
+cages5_9.1[which(cages5_9.1$treatment=='mantid'),]$predatorID <- wk9.1_mantids$predatorID
+
+# location of each mantid from previous week
+wk8_cages <- tibble(wk8_cage = c(9, 28, 31, 36),
+                    predatorID = c('M05', 'M02', 'M07', 'M03'))
+cages5_9.1 <- cages5_9.1 %>% 
+    select(-wk9_rando) %>% 
+    left_join(wk8_cages)
+
+#=========
+# week 9.2
+# find the relevant cages for 9.2 + assign them mantids
+cages5_9.2 <- cages5_all %>% 
+    filter(feeding_wk==9.2)
+cages5_9.2[which(cages5_9.2$treatment=='mantid'),]$predatorID <- wk9.2_mantids$predatorID
+
+# location of each mantid from previous week
+wk9.1_cages <- tibble(wk9.1_cage = c(8, 9, 15),
+                    predatorID = c('M02', 'M07', 'M05'))
+cages5_9.2 <- cages5_9.2 %>% 
+    select(-wk9_rando) %>% 
+    left_join(wk9.1_cages)
+
+#==========
 # assign cage data table version
-cages_to_write <- cages4
+cages_to_write <- cages5_9.2
+
+
 # export sheet to update cage allocations
-write_csv(cages_to_write, here::here('results/g1_updated_cages.csv'))
+write_csv(cages_to_write, here::here(paste0('results/g1_updated_cages_wk',week,'.csv')))

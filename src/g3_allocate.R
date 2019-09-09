@@ -3,9 +3,8 @@
 #==============================================
 library(tidyverse)
 
-# week <- 2
 g_sorted <- read_csv(here::here(paste0('results/g2_ghops_include_wk',week,'.csv')))
-cage_alloc <- read_csv(here::here('results/g1_updated_cages.csv'))
+cage_alloc <- read_csv(here::here(paste0('results/g1_updated_cages_wk',week,'.csv')))
 trt_alloc <- cage_alloc %>% 
     filter(treatment != 'control') %>% 
     select(treatment)
