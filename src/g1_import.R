@@ -66,7 +66,7 @@ cages5_m_all <- bind_rows(cages5_m, extra_feeding36)
 #========
 cages5_all <- bind_rows(cages5_g, cages5_s, cages5_m_all)
 wk9.1_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
-                      m_rando = runif(3)) %>% 
+                        m_rando = runif(3)) %>% 
     arrange(m_rando)
 wk9.2_mantids <- tibble(predatorID = c('M02', 'M05', 'M07'),
                         m_rando = runif(3))%>% 
@@ -97,15 +97,40 @@ cages5_9.2 <- cages5_all %>%
 cages5_9.2[which(cages5_9.2$treatment=='mantid'),]$predatorID <- wk9.2_mantids$predatorID
 
 # location of each mantid from previous week
-wk9.1_cages <- tibble(wk9.1_cage = c(8, 9, 15),
-                    predatorID = c('M02', 'M07', 'M05'))
+wk9.1_cages <- cages5_9.1 %>% 
+    filter(treatment=='mantid') %>% 
+    select(cage, predatorID) %>% 
+    rename(wk9.1_cages = cage)
+
+# wk9.1_cages <- tibble(wk9.1_cage = c(8, 9, 15),
+#                       predatorID = c('M02', 'M07', 'M05'))
 cages5_9.2 <- cages5_9.2 %>% 
     select(-wk9_rando) %>% 
     left_join(wk9.1_cages)
 
+#=========
+# week 9.3
+# find the relevant cages for 9.3 + assign them mantids
+cages5_9.3 <- cages5_all %>% 
+    filter(feeding_wk==9.3)
+cages5_9.3[which(cages5_9.3$treatment=='mantid'),]$predatorID <- wk9.3_mantids$predatorID
+
+# location of each mantid from previous week
+wk9.2_cages <- cages5_9.2 %>% 
+    filter(treatment=='mantid') %>% 
+    select(cage, predatorID) %>% 
+    rename(wk9.2_cages = cage)
+
+# wk9.2_cages <- tibble(wk9.2_cage = c(31, 22, 36),
+#                       predatorID = c('M02', 'M07', 'M05'))
+cages5_9.3 <- cages5_9.3 %>% 
+    select(-wk9_rando) %>% 
+    left_join(wk9.2_cages)
+#if M05 doesn't eat (was slow in wk9.2), can be switched with M07
+
 #==========
 # assign cage data table version
-cages_to_write <- cages5_9.2
+cages_to_write <- cages3
 
 
 # export sheet to update cage allocations

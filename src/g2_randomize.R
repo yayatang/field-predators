@@ -13,6 +13,12 @@ weighed_g <- read_csv(here::here(paste0('data/ghop_data_wk',week,'.csv')))
 weighed_g <- weighed_g[,1:3]
 colnames(weighed_g) <- c('ghop_tube', 'tube_mass', 'tube_ghop_mass')
 
+# for week 9.3, a molting ghop to be removed
+if (week == 9.3) {
+    weighed_g[which(weighed_g$ghop_tube == 'G26'),] <- NA
+    weighed_g[which(weighed_g$ghop_tube == 'G01'),] <- NA
+}
+
 # import the relevant cages w/ info for the week
 cage_alloc <- read_csv(here::here(paste0('results/g1_updated_cages_wk',week,'.csv')))
 receiving_ghops <- nrow(filter(cage_alloc, treatment!='control'))
@@ -37,7 +43,12 @@ g_masses <- g_masses %>%
     mutate(rolled_mean = rollapply(ghop_mass, num_ghops, mean, fill = NA, align='center'),
            rolled_median = rollapply(g_masses$ghop_mass, num_ghops, median, fill = NA, align='center'),
            rolled_diff = rolled_mean - rolled_median)
-min_index <- which.min(abs(g_masses$rolled_diff)) - floor(num_ghops/2)
+if(week == 9.3){
+    min_matches <- g_masses$rolled_mean - 0.10857
+    min_index <- which.min(abs(min_matches)) - floor(num_ghops/2)
+} else {
+    min_index <- which.min(abs(g_masses$rolled_diff)) - floor(num_ghops/2)
+}
 max_index <- min_index + num_ghops - 1
 
 g_masses$include <- FALSE

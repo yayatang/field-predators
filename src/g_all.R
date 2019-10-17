@@ -5,7 +5,8 @@ library(tidyverse)
 # import feeding dates
 feeding_dates <- read_csv(here::here('data/dates_for_feeding.csv'))
 colnames(feeding_dates) <- c('week_num', 'date_index')
-week <- 9.2
+week <- 3
+
 # to preseve week 9 randomization, wk 9 feeding dates are all set to 20190905
 rand_date <- feeding_dates[which(feeding_dates$week_num == week),]$date_index
 
