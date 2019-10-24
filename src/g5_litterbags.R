@@ -13,10 +13,22 @@ get_dry_lit <- function() {
                prop_moist= (mass_lit_wet - mass_lit_dry) / mass_lit_wet)
     
     avg_moist <- mean(dry_lit$prop_moist)
+    se_moist <- se(dry_lit$prop_moist)
+    return(list(avg_moist, se_moist))
 }
 
-#call sthe function to get original moisture %
-litter_moist <- get_dry_lit()
+#call function to get original moisture %
+lit_moist <- tibble(sampling = integer(),
+                    samp_desc = character(),
+                    moist_mean = double(),
+                    moist_se = double())
+
+# adds to table for litter moisture
+lit0_moist <- get_dry_lit()
+lit0_moist_mean <- lit0_moist[[1]]
+lit0_moist_se <-lit0_moist[[2]]
+lit_moist[1,] <- c(0, 'pre-launch', lit0_moist_mean, lit0_moist_se)
+
 
 # import cage properties and initial bag masses
 cage_treatments <- read_csv(here::here('results/g1_updated_cages_wk9.csv')) %>% 
@@ -26,19 +38,26 @@ bag_prep0 <- read_csv(here::here('data/litterbag_DATA_2019.07.11.csv'))
 colnames(bag_prep0) <- c('cage', 'dir', 'start_lit_wet', 'start_lit_bag')
 bag_prep1 <- bag_prep0 %>% 
     filter(cage!=3 & cage!=26) %>% 
-    filter(!(cage==29 & dir=="E")) %>% 
-    mutate(start_lit_dry = start_lit_wet - (start_lit_wet*litter_moist),
-           mass_bag = start_lit_bag - start_lit_wet)
+    filter(!(cage==29 & dir=="E")) %>%
+    mutate(start_lit_dry = start_lit_wet - (start_lit_wet*lit0_moist_mean),
+           m_bag = start_lit_bag - start_lit_wet)
 
 bag_sampA <- read_csv(here::here('data/litterbag_sampling_DATA.csv'))
 colnames(bag_sampA) <- c('cage', 'dir', 'samp1_wet', 'samp1_dry_1m', 'samp1_dry_4m')
 
 bag_all <- left_join(bag_prep1, bag_sampA, by=c('cage', 'dir')) %>% 
     left_join(cage_treatments, by= 'cage') %>% 
-    mutate(samp1_wet_diff = samp1_wet - start_lit_bag,
-           samp1_dry_diff = samp1_dry_1m - start_lit_dry - mass_bag) %>% 
+    mutate(samp1_wet_m = samp1_wet - m_bag, 
+           samp1_wet_diff = samp1_wet - start_lit_bag,
+           samp1_dry_diff = samp1_dry_1m - start_lit_dry - m_bag,
+           samp1_moist = samp1_wet - samp1_dry_1m,
+           samp1_moist_percent = samp1_moist/samp1_wet) %>% 
     select(cage, replicate, treatment, dir, everything())
 
+lit_moist[2,] <- tibble(1,
+                        'north',
+                        mean(na.omit(bag_all$samp1_moist_percent)),
+                        se(bag_all$samp1_moist_percent))
 
 #== look at the data
 sample_n(bag_all, 10)
@@ -59,6 +78,13 @@ ggboxplot(bag_all, x = 'dir', y = 'samp1_wet_diff',
           xlab = 'direction',
           ylab = 'wet mass diff')+
     theme(legend.position='none')
+
+ggbarplot(lit_moist[1:2,], x = 'sampling', y = 'moist_mean',
+          color = 'sampling', 
+          title = 'average %moisture of litterbags',
+          xlab = 'sampling',
+          ylab = '%moisture',
+          )
 
 # boxplots for DRY masses of all treatments in the NORTH direction
 bag_north <- filter(bag_all, dir == 'N')
@@ -95,13 +121,12 @@ summary(samp1_aov_dir)
 samp1_aov_dry <- aov(samp1_dry_diff ~ treatment, data = bag_north)
 summary(samp1_aov_dry)
 
-
-#===assumptions tests===
-# plot(samp1_aov) #check plots for normally distributed values
-# plot(samp1_aov_dir) #check plots for normally distributed values
-plot(samp1_aov_dry)
-
-# levene's test for homogeneity of variances
-library(car)
-samp1_levenes <- leveneTest(samp1_dry_diff ~ treatment, data = bag_north)
-samp1_levenes
+# #===assumptions tests===
+# # plot(samp1_aov) #check plots for normally distributed values
+# # plot(samp1_aov_dir) #check plots for normally distributed values
+# plot(samp1_aov_dry)
+# 
+# # levene's test for homogeneity of variances
+# library(car)
+# samp1_levenes <- leveneTest(samp1_dry_diff ~ treatment, data = bag_north)
+# samp1_levenes
