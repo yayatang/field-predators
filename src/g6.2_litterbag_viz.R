@@ -1,10 +1,16 @@
-# 
+# inferred dry litter bag diffs over time
 ggplot(bag_data3, aes(x=samp_num, y=mean.infer_trt, group=treatment))+
     geom_line(aes(color=treatment)) +
     geom_point(aes(color=treatment))+
     geom_errorbar(aes(ymin = mean.infer_trt - se.infer_trt, ymax = mean.infer_trt + se.infer_trt,
                       color = treatment), width = 0.05)
 
+# REAL dry litter bag diffs over time
+ggplot(bag_data_real, aes(x=samp_num, y=mean.true_trt, group=treatment))+
+    geom_line(aes(color=treatment)) +
+    geom_point(aes(color=treatment))+
+    geom_errorbar(aes(ymin = mean.true_trt - se.true_trt, ymax = mean.true_trt + se.true_trt,
+                      color = treatment), width = 0.05)
 
 
 

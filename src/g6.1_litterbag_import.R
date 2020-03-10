@@ -77,7 +77,7 @@ bag_data <- bind_rows(bag_samp0, bag_samp1, bag_samp2) %>%
     group_by(samp_num) %>% 
     mutate(lit_wet_m = bag_wet - m_bag, # for the wet mass of litter
            wet_diff = bag_wet - start_lit_bag, # for wet mass diff from the tstart
-           dry_lit = bag_dry - m_bag, # dry mass of litter at this smapling
+           dry_lit = bag_dry - m_bag, # dry mass of litter at this sampling
            dry_diff = start_lit_dry - bag_dry - m_bag, # difference in dry litter mass from start
            moist = bag_wet - bag_dry,
            moist_percent = moist/lit_wet_m*100, # what is this a percentage of?
@@ -113,3 +113,8 @@ bag_data3 <- bag_data2 %>%
               se.infer_trt = se(dry_infer)) %>% 
     na.omit()
 
+bag_data_real <- bag_data2 %>% 
+    na.omit() %>% 
+    group_by(treatment, samp_num) %>% 
+    summarize(mean.true_trt = mean(dry_lit),
+              se.true_trt = se(dry_lit))
