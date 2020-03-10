@@ -1,3 +1,11 @@
+# 
+ggplot(bag_data3, aes(x=samp_num, y=mean.infer_trt, group=treatment))+
+    geom_line(aes(color=treatment)) +
+    geom_point(aes(color=treatment))+
+    geom_errorbar(aes(ymin = mean.infer_trt - se.infer_trt, ymax = mean.infer_trt + se.infer_trt,
+                      color = treatment), width = 0.05)
+
+
 
 
 # boxplots for wet masses of all treatments and directions
