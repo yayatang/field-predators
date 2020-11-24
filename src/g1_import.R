@@ -5,7 +5,7 @@ library(tidyverse)
 
 cages0 <-  read_csv(here::here('data/0_cage_allocation.csv'))
 
-# week 0: switch mis-installed cages1 26 + 28
+# week 0: switch mis-installed cages 26 + 28
 cages1 <- cages0
 new_28 <- cages1[which(cages1$cage==26), c('treatment','predatorID')]
 new_26 <- cages1[which(cages1$cage==28), c('treatment','predatorID')]
@@ -134,4 +134,5 @@ cages_to_write <- cages3
 
 
 # export sheet to update cage allocations
-write_csv(cages_to_write, here::here(paste0('results/g1_updated_cages_wk',week,'.csv')))
+# commented out after the end of the experiment
+# write_csv(cages_to_write, here::here(paste0('results/g1_updated_cages_wk',week,'.csv')))
