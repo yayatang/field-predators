@@ -1,3 +1,6 @@
+## not sure a separate stats script is prudent/necessary
+
+
 
 #====STATS FOR SAMPLING 1=====
 # =====summary stats=====

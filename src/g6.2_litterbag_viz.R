@@ -1,56 +1,119 @@
 library(plotly)
 
+#### plot of inferred dry mass ####
 # graph all litter dry masses over samplings
-all_bags <- ggplot(filter(bag_data_all, dir == 'W'),
+# all_bags <- ggplot(filter(bag_data_all, dir == 'W'), # for only looking at one direction
+all_bags <- ggplot(bag_data_all,# for all litterbag directions
                    aes(x = samp_num, y = dry_infer, group = treatment)) +
-    # geom_line(aes(color = bag_sampID )) +
-    geom_jitter(aes(color = treatment), width = 0.2)
+    geom_jitter(aes(color = treatment, shape = dir), width = 0.2) +
+    labs(title = 'litterbags inferred + real')
 ggplotly(all_bags)
 
-indiv_real <- ggplot(bag_data_all,
-                     aes(x = samp_num, y = dry_lit, group = treatment)) +
-    # geom_jitter(aes(color = dir))
-    geom_jitter(aes(color = treatment), width = 0.2)
+
+##### graph of only dry litter mass loss ####
+# graph all litterbag dry masses that were measured
+indiv_real <- ggplot(bag_data_simple,
+                     aes(x = samp_num, y = dry_diff_from_start, 
+                         group = block)) +
+    geom_jitter(aes(color = dir, shape = treatment), 
+                width = 0.2) + 
+    labs(title = "ALL litterbag dry masses",
+         x = "sampling number",
+         y = "dry mass loss from start") +
+    theme_bw() +
+    scale_x_continuous(limits = c(-0.2, 3.2)) +
+    scale_y_continuous(limits = c(-0.25, 0.07))
 ggplotly(indiv_real)
 
-sw_compar <- bag_data_all %>%
-    filter(samp_num==3,
-           dir == 'S' | dir == 'W')
-# s_compar <- bag_data_all[which(bag_data_all$samp_num == 3 & bag_data_all$dir == 'S'),]
-# w_compar <- bag_data_all[which(bag_data_all$samp_num == 3 & bag_data_all$dir == 'W'),]
-s_compar <- filter(bag_data_all, samp_num == 3 & dir == 'S')
-w_compar <- filter(bag_data_all, samp_num == 3 & dir == 'W')
+ggsave(here::here('results/litterbag_by_samp_ALL.png'), 
+       width = 7, height = 5, dpi = 600)
 
+##### graphs for one direction ONLY ####
+graph_dir <- "S"
+indiv_real_one <- ggplot(filter(bag_data_simple, dir ==graph_dir),
+                         aes(x = samp_num, y = dry_diff_from_start, 
+                             group = block)) +
+    geom_jitter(aes(color = treatment), 
+                width = 0.2) +
+    labs(title = paste(graph_dir, "litterbag dry masses"),
+         x = "sampling number",
+         y = "dry mass loss from start") +
+    theme_bw() +
+    scale_x_continuous(limits = c(-0.2, 3.2)) +
+    scale_y_continuous(limits = c(-0.25, 0.07))
+
+ggplotly(indiv_real_one)
+
+ggsave(paste0(here::here('results/litterbag_by_samp_'), graph_dir, '.png'), 
+       width = 7, height = 5, dpi = 600)
+
+## graph for Samp 3
+bag_data_simple_3 <- bag_data_simple %>% 
+    filter(dir == "W" | dir == "S")
+indiv_real_3 <- ggplot(bag_data_simple_3,
+                         aes(x = samp_num, y = dry_diff_from_start, 
+                             group = block)) +
+    geom_jitter(aes(color = dir, shape = treatment), 
+                width = 0.2) +
+    labs(title = paste("West and south litterbag dry masses"),
+         x = "sampling number",
+         y = "dry mass loss from start") +
+    theme_bw() +
+    scale_x_continuous(limits = c(-0.2, 3.2)) +
+    scale_y_continuous(limits = c(-0.25, 0.07))
+
+ggplotly(indiv_real_3)
+
+ggsave(here::here('results/litterbag_by_samp3.png'), 
+       width = 7, height = 5, dpi = 600)
+
+
+#### t tests for bag samples ####
+# we see from the graph that in sampling 3, S + W may be different
+# run t-tests to compare directions and samplings
+
+# t test comparing south from west @ samp 3
+t.test(filter(bag_data_all, dir == 'W' & samp_num == 3)$dry_lit, 
+       filter(bag_data_all, dir == 'S' & samp_num == 3)$dry_lit,
+       paired = TRUE)
+
+# comparing S litterbags between samp 0 & 3
 t.test(filter(bag_data_all, dir == 'S' & samp_num == 0)$dry_lit, 
-       filter(bag_data_all, dir == 'S' & samp_num == 3)$dry_lit)
-    
+       filter(bag_data_all, dir == 'S' & samp_num == 3)$dry_lit,
+       paired = TRUE)
 
-# t test comparing south from west
-t.test(s_compar$dry_lit, w_compar$dry_lit, paired = TRUE)
+# comparing W litterbags between samp 0 & 3
+t.test(filter(bag_data_all, dir == 'W' & samp_num == 0)$dry_lit, 
+       filter(bag_data_all, dir == 'W' & samp_num == 3)$dry_lit,
+       paired = TRUE)
 
-# difference in dry litter mass
-t.test(s_compar$dry_diff_from_start, w_compar$dry_diff_from_start, paired = TRUE)
+# dry litter mass difference FROM START
+# comparing S litterbags between samp 0 & 3
+t.test(filter(bag_data_all, dir == 'S' & samp_num == 0)$dry_diff_from_start, 
+       filter(bag_data_all, dir == 'S' & samp_num == 3)$dry_diff_from_start,
+       paired = TRUE)
 
-sampW_aov <- aov(dry_diff_from_start ~ treatment, data = filter(bag_data_all, dir == 'W'))
+# ANOVAs to see if the mass loss depends on treatment
+sampW_aov <- aov(dry_lit ~ treatment, data = filter(bag_data_all, dir == 'W'))
 summary(sampW_aov)
-
 
 
 #ANOVA for the effect of litterbag dir on inferred dry mass @ T1
 samp1_aov <- aov(dry_infer ~ dir, data = filter(bag_data_all, samp_num == 1))
 summary(samp1_aov)
-
+# answer is no
 
 # ANOVA for the effect of litterbag direction on inferred dry litter mass
-samp2_aov <- aov(dry_infer ~ dir, data = filter(bag_data_all, samp_num == 2))
+# samp2_aov <- aov(dry_lit ~ dir, data = filter(bag_data_all, samp_num == 3))
+samp2_aov <- aov(dry_lit ~ treatment, data = filter(bag_data_all, samp_num == 3))
 summary(samp2_aov)
 
 # ANOVA for the effect of litterbag direction on true  dry litter mass
-samp3_aov <- aov(dry_lit ~ dir, data = sw_compar)
-summary(samp3_aov)
-
-samp3_aov_trt <- aov(dry_lit ~ treatment, data = sw_compar)
-summary(samp3_aov_trt)
+# samp3_aov <- aov(dry_lit ~ dir, data = sw_compar)
+# summary(samp3_aov)
+# 
+# samp3_aov_trt <- aov(dry_lit ~ treatment, data = sw_compar)
+# summary(samp3_aov_trt)
 
 
 some_aov <- aov(dry_infer ~ dir + treatment, data = filter(bag_data_all, samp_num == 2))
@@ -91,11 +154,11 @@ inferred <- ggplot(bag_data_infer, aes(x=samp_num, y=mean.infer_trt))+
 ggplotly(inferred) # though the inferred values shouldn't exist for samp 3...
 
 # REAL dry litter bag diffs over time, but AVERAGED for each treatment/sampling
-mean_real <- ggplot(bag_data_real, aes(x=samp_num, y=mean.true_trt))+
+mean_real <- ggplot(bag_data_real, aes(x=samp_num, y=mean.real_trt))+
     geom_line(aes(color=treatment)) +
     geom_point(aes(color=treatment))+
-    geom_errorbar(aes(ymin = mean.true_trt - se.true_trt, 
-                      ymax = mean.true_trt + se.true_trt,
+    geom_errorbar(aes(ymin = mean.real_trt - se.real_trt, 
+                      ymax = mean.real_trt + se.real_trt,
                       color = treatment), width = 0.05)
 ggplotly(mean_real)
 
@@ -120,7 +183,8 @@ summary(samp3_aov)
 # =====summary stats=====
 # means by direction 
 final_by.dir <- group_by(bag_data_all, dir, samp_num)
-final_by.dir_summ <- summarise(final_by.dir, mean = mean(dry_lit), se = se(dry_lit)) %>% 
+final_by.dir_summ <- summarise(final_by.dir, mean = mean(dry_lit), 
+                               se = se(dry_lit)) %>% 
     arrange(samp_num, dir)
 final_by.dir_summ
 
