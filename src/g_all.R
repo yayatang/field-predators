@@ -1,13 +1,15 @@
+# This is the script I ran to set up the feeding allocations during the experiment
+
 library(here)
 library(tidyverse)
-# scripts 2 + 3 need w eeks
+# scripts 2 + 3 need weeks
 
 # import feeding dates
 feeding_dates <- read_csv(here::here('data/dates_for_feeding.csv'))
 colnames(feeding_dates) <- c('week_num', 'date_index')
 week <- 3
 
-# to preseve week 9 randomization, wk 9 feeding dates are all set to 20190905
+# to preserve week 9 randomization, wk 9 feeding dates are all set to 20190905
 rand_date <- feeding_dates[which(feeding_dates$week_num == week),]$date_index
 
 # generate ghop allocation tables

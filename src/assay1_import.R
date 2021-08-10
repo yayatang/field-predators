@@ -1,3 +1,5 @@
+# last updated: 23 dec 2019
+
 # library(tidyverse)
 library(readr)
 library(readxl)
@@ -144,8 +146,10 @@ preds_all %>%
 preds_mantid <- filter(preds_all, predator_type == 'mantid')
 preds_spider <- filter(preds_all, predator_type == 'spider')
 
-ggboxplot(preds_mantid, x = 'sample_type', y = 'C_N_ratio')
 
+# this is elemental data only, not for mass
+ggboxplot(preds_mantid, x = 'sample_type', y = 'C_N_ratio')
+ggboxplot(preds_spider, x = 'sample_type', y = 'C_N_ratio')
 
 # 3. summarize + viz
 # preds_summ <- summarize(preds_all[c('C_N_ratio')])
