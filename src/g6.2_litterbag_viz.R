@@ -1,4 +1,7 @@
 library(plotly)
+library(readr)
+
+bag_data_all <- read_rds(here::here('results/litterbag_data_all_samplings.rds'))
 
 #### plot of inferred dry mass ####
 # graph all litter dry masses over samplings
@@ -6,23 +9,26 @@ library(plotly)
 all_bags <- ggplot(bag_data_all,# for all litterbag directions
                    aes(x = samp_num, y = dry_infer, group = treatment)) +
     geom_jitter(aes(color = treatment, shape = dir), width = 0.2) +
-    labs(title = 'litterbags inferred + real')
+    labs(title = 'litterbags inferred + real') + 
+    theme_bw()
 ggplotly(all_bags)
 
 
 ##### graph of only dry litter mass loss ####
 # graph all litterbag dry masses that were measured
-indiv_real <- ggplot(bag_data_simple,
+(indiv_real <- ggplot(bag_data_all,
                      aes(x = samp_num, y = dry_diff_from_start, 
                          group = block)) +
     geom_jitter(aes(color = dir, shape = treatment), 
                 width = 0.2) + 
     labs(title = "ALL litterbag dry masses",
-         x = "sampling number",
-         y = "dry mass loss from start") +
-    theme_bw() +
-    scale_x_continuous(limits = c(-0.2, 3.2)) +
-    scale_y_continuous(limits = c(-0.25, 0.07))
+         x = "\nsampling number\n",
+         y = "dry mass loss from start",
+         caption = "Some of the masses were inferred from wet weighed mass (which includes accumulated mineral soil).") +
+    theme_bw()
+    # scale_x_continuous(limits = c(-0.2, 3.2)) +
+    # scale_y_continuous(limits = c(-0.25, 0.07))
+)
 ggplotly(indiv_real)
 
 ggsave(here::here('results/litterbag_by_samp_ALL.png'), 

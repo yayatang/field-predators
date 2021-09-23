@@ -42,10 +42,11 @@ colnames(bag_prep_raw) <- c('cage', 'dir', 'm_lit_wet', 'start_m_lit_bag')
 # filter out irrelevant cages + outliers
 bag_prep <- bag_prep_raw %>% 
     filter(cage!=3 & cage!=26) %>% 
-    filter(!(cage==29 & dir=="E")) %>% # strange mass-gaining outlier in samp 1
     mutate(start_m_lit_dry = m_lit_wet - (m_lit_wet*lit0_moist[[1]]),
            m_bag = start_m_lit_bag - start_m_lit_dry) %>% 
     left_join(cage_treatments, by= 'cage') %>% 
+    # filter(!(cage==29 & dir=="E")) %>% # strange mass-gaining outlier in samp 1
+    # above line commented out since we're doing ash free analysis
     select(cage, dir, treatment, replicate, m_bag, start_m_lit_dry, everything())
 
 # REMOVE???
@@ -116,6 +117,8 @@ bag_data_all <- bag_data %>%
            samp_num = as_factor(samp_num)) %>%
     select(bag_sampID, everything())
 
+## last written, 2021.09.11
+# write_rds(bag_data_all, here::here('results/litterbag_data_all_samplings.rds'))
 
 # all following subsets are of the above tibble
 

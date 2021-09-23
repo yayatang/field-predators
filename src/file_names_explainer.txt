@@ -1,0 +1,14 @@
+The file names are a bit confusing. 
+
+## g_all until g4 are for reproducing the predator and grasshopper allocations.
+the output is a csv file with all cages' predator allocations and 
+
+## g5-g6.3 are for the litterbag allocation and data analysis/visualization.
+
+g5 was for deciding which order to sample the litterbags
+g6 sources the next three files (g6.1-g6.3)
+
+**Check github for whether litterbag 6.1 or 6.1 v2 is more recently updated (this needs to be checked for import and viz files)
+Plant richness and plant npp also had v2 files. 
+
+==> from the looks of it, the v2 files were the ones i used for the talk (they have the updated themes)

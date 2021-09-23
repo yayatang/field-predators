@@ -1,5 +1,6 @@
 library(plotly)
 library(lme4)
+library(emmeans)
 source(here::here('src/g6.1_litterbag_import_v2.R'))
 
 # remove this once the double entry is resolved
@@ -81,11 +82,11 @@ my_ggsave(here::here('results/litterbag_decomp_samp2.png'))
 
     
     
-    theme(axis.text.x = element_text(vjust = 1, hjust =0.5),
-          panel.background = element_rect(fill = "#f9f9f9",
-                                          colour = "#f9f9f9"),
-          panel.border = element_rect(color = "black", fill = NA),
-          legend.position = "none")
+    # theme(axis.text.x = element_text(vjust = 1, hjust =0.5),
+    #       panel.background = element_rect(fill = "#f9f9f9",
+    #                                       colour = "#f9f9f9"),
+    #       panel.border = element_rect(color = "black", fill = NA),
+    #       legend.position = "none")
 
 #--- Data analysis: statistics for litterbags ----
 bag_data_inferred <- bag_data_all %>% 
@@ -129,7 +130,7 @@ qqline(resid(lmer_litterbag_infer2_null))
 
 
 ## comparing the two models
-anova(lmer_litterbag_infer_null, lmer_litterbag_infer_samp2)
+anova(lmer_litterbag_infer2_null, lmer_litterbag_infer2_samp2)
 
 
 bag_data_all_model <- bag_data_all

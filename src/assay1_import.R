@@ -6,6 +6,8 @@ library(readxl)
 library(tidyverse)
 library(here)
 library(ggpubr)
+library(plotly)
+
 
 substrRight <- function(x, n){
     substr(x, nchar(x)-n+1, nchar(x))
@@ -13,8 +15,8 @@ substrRight <- function(x, n){
 
 #==== 
 # this is data on the properties of the ghops and predators (e.g. mass, identity)
-a_ghops0 <- read_csv(here::here('data/feeding4_assay_ghops.csv'))
-a_preds0 <- read_csv(here::here('data/feeding4_assay_predators.csv')) 
+a_ghops0 <- read_csv(here::here('data/assay_feeding4_ghops.csv'))
+a_preds0 <- read_csv(here::here('data/assay_feeding4_predators.csv')) 
 
 colnames(a_ghops0) <- c('ghopID', 'ghop_num', 'm_tube', 'm_tube_ghop', 'calc_m_ghop', 
                        'ghop_fate', 'predatorID', 'comments', 'm_tube_poop')
@@ -36,7 +38,7 @@ a_preds0 <- a_preds0[rowSums(is.na(a_preds0)) != ncol(a_preds0),]
 # turn raw, imported data into useful data
 # trims ghop data
 a_ghops1 <- a_ghops0 %>% 
-    mutate(m_ghop_fed = calc_m_ghop - m_tube_poop + m_tube) %>% 
+    mutate(m_ghop_fed = calc_m_ghop - m_tube_poop + m_tube) %>%  ## this is wrong. correct in rmd
     select(ghopID, m_ghop_fed, ghop_fate, predatorID, comments)
 
 # clean predator data
@@ -139,16 +141,25 @@ summary(ghops_all[c('mass_mg', 'C_N_ratio')])
 preds_all <- left_join(e_preds, a_preds3)
 
 fact_cols <- c('sample_type', 'prod_type', 'predator_type', 'expID')
-preds_all %>% 
+preds_plots <- preds_all %>% 
     mutate_at(fact_cols, list(~ factor(.))) %>% 
-    group_by(predator_type, sample_type)
+    filter(sample_type != 'silk') %>% 
+    group_by(predator_type, sample_type) %>% 
+    ggplot(aes(x = sample_type,
+               y = C_N_ratio,
+               group = predatorID)) + 
+    geom_boxplot() +
+    facet_grid(. ~ predator_type) + 
+    theme_flat
+
+ggplotly(preds_plots)
+
 
 preds_mantid <- filter(preds_all, predator_type == 'mantid')
 preds_spider <- filter(preds_all, predator_type == 'spider')
 
-
 # this is elemental data only, not for mass
-ggboxplot(preds_mantid, x = 'sample_type', y = 'C_N_ratio')
+ggboxplot(preds_mantid, x = 'sample_type', y = 'C_N_ratio') 
 ggboxplot(preds_spider, x = 'sample_type', y = 'C_N_ratio')
 
 # 3. summarize + viz

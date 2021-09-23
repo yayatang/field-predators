@@ -279,3 +279,14 @@ add_phase <- function(my_df) {
 #   ggplotly(plot_by_treatment)
 
 #}
+
+theme_angled <- theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust=1),
+                      panel.background = element_rect(fill = "#f9f9f9",
+                                                      colour = "#f9f9f9"),
+                      panel.border = element_rect(color = "black", fill = NA))
+
+theme_flat <- theme(axis.text.x = element_text(vjust = 1, hjust =0.5),
+                    panel.background = element_rect(fill = "#f9f9f9",
+                                                    colour = "#f9f9f9"),
+                    panel.border = element_rect(color = "black", fill = NA),
+                    legend.position = "none")

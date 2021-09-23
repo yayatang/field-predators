@@ -104,6 +104,7 @@ isotopes_under_long_summ %>%
 isotopes_e_w %>% 
     filter(sample_dir == 'W') %>%
     # mutate(treatment = fct_relevel(treatment, c('control', 'ghop', 'mantid', 'spider'))) %>% 
+    mutate(treatment = fct_relevel(treatment, c('ghop', 'mantid', 'spider', 'control'))) %>%
     group_by(treatment) %>% 
     summarize(mean_d15n = mean(d15n),
               se_d15n = se(d15n)) %>% 
@@ -119,12 +120,30 @@ isotopes_e_w %>%
     labs(title = 'd15N of soil beneath litter bags, at end of experiment',
          x = 'Treatment',
          y = 'd15N') +
-    scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
+    # scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
     theme_yaya() + 
     theme(legend.position = 'none',
           plot.title = element_blank())
 
 my_ggsave(here::here('results/soil_d15n.png'))
+
+
+## data analysis: trying anovas for d15n ----
+
+## hm... these two give the same results
+d15n_anova_block <- aov(d15n ~ treatment + block, isotopes_e_w)
+summary(d15n_anova_block)
+
+d15n_anova_simple <- aov(d15n ~ treatment, isotopes_e_w)
+summary(d15n_anova_simple)
+
+d15n_lm <- lm(d15n ~ treatment + (1|block), isotopes_e_w)
+summary(d15n_lm)
+
+## do pairwirse t-tests
+pairwise.t.test(isotopes_e_w$d15n, isotopes_e_w$treatment, p.adj = 'bonf') ## adjustments include bonf, holm
+TukeyHSD(d15n_anova_simple)
+
 
 ## Data analysis: d15N by treatment ----
 # switch factors back into an order that compares treatments against control

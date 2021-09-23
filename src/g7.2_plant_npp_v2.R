@@ -26,7 +26,7 @@ theme_npp <- function() {
 }
 
 ## import cage meta data
-cages0 <- read_csv(here::here('data/0_cage_allocation.csv')) %>% 
+cages0 <- read_csv(here::here('results/g1_updated_cages_wk9.csv')) %>% 
     filter(cage != 3) %>% 
     select(-predatorID)
 cages0$block <- as_factor(cages0$block)
@@ -361,7 +361,7 @@ plot(lmm_npp_cereals)
 
 ## nevo method!
 lmm_npp_cereals_null <- lme4::lmer(m_group ~ (1|block),
-                              filter(plant_npp, fxl_group == 'cereals'))
+                                   filter(plant_npp, fxl_group == 'cereals'))
 anova(lmm_npp_cereals)
 anova(lmm_npp_cereals_null, lmm_npp_cereals)
 emmeans(lmm_npp_cereals, pairwise ~ treatment)
