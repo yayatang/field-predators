@@ -1,0 +1,294 @@
+---
+title: "Chapter 3: feeding assay results"
+author: "Yaya"
+date: "15 August 2021"
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+    theme: united
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	include = FALSE
+)
+library(tidyverse)
+library(here)
+library(readr)
+library(janitor)
+library(viridis)
+library(gridExtra)
+source(here::here('src/yaya_fxns.R'))
+
+vir_4 <- viridis(4)
+
+# predators to remove bc they didn't eat
+remove_predators <- tibble(predator_id = c('MR08', 'S07', 'S09', 'S23'))
+
+assay_raw <- read_csv('data/assay_feeding4_predators.csv', lazy = FALSE) %>% 
+  clean_names() %>% 
+  remove_empty() %>% 
+  anti_join(remove_predators) %>% 
+  rename(tube_feces_mg = feces_tube_feces)
+
+calib_raw <- read_csv(here::here('data/assay_feeding4_ghops.csv')) %>% 
+  clean_names() %>% 
+  remove_empty() %>% 
+  filter(!is.na(analytical_fate)) %>% 
+  rename(ghop_calc_mass = calculated_ghop_mass,
+         tube_poop_mass = tube_mas_with_poop)
+```
+
+Feeding assay #4 is to parameterize the quality and quantity of inputs to mesocosms. This is for parameterizing the predator products produced while running the experiment. 
+
+## Calibration grasshoppers to infer predators' food
+
+```{r}
+calib_data <-  calib_raw %>% 
+  mutate(ghop_wet_mass_mg  = ifelse(is.na(tube_poop_mass), 
+                                    (ghop_calc_mass - tube_mass)*1000,
+                                    (ghop_calc_mass - tube_poop_mass)*1000)) %>% 
+  select(ghop_id, ghop_wet_mass_mg, analytical_fate, predator_id, comments)
+
+```
+
+**STILL NEEDS** dry ghop mass data (check datasheets)
+
+
+## Predator products, quantity
+
+This is an R markdown document for calculating and summarizing the predator products assay for quantifying the amount of necromass entering the mesocosms in chapter 3.
+
+
+```{r calculate_product_masses}
+assay_wide_data <- assay_raw %>% 
+  select(-feeding_observations, -original_id, -eggsac_notes) %>% 
+  mutate(lid_mass_mg = lid_mass_g*1000,
+         lid_predator_start_mg = lid_predator_start_g*1000,
+         lid_predator_postprandial_mg = lid_predator_24_48_hr_g*1000,
+         remains_mg = remains_tube_dry_remains_mg - remains_tube_mg,
+         feces_mg = feces_tube_dry_feces_mg - feces_tube_mass_mg,
+         predator_start_mass_mg = lid_predator_start_mg - lid_mass_mg,
+         predator_postprandial_mass_mg = lid_predator_postprandial_mg - lid_mass_mg) %>% 
+  select(predator_type, predator_id, remains_mg, feces_mg, predator_start_mass_mg, predator_postprandial_mass_mg)
+
+```
+
+
+#### Plot of predator by-products
+
+Plot the predator mass versus their product mass to see whether there any confounding variables there.
+
+
+```{r}
+pairs(select(assay_wide_data, -c(predator_type, predator_id)))
+```
+
+Figures to check whether predator mass had an effect on the amount of products they produced.
+```{r, figures-side, fig.show = "hold", out.width="50%"}
+# pred_feces <- 
+assay_wide_data %>% 
+  ggplot(aes(predator_start_mass_mg, 
+             feces_mg, 
+             color = predator_type)) + 
+  geom_point() + 
+  scale_color_manual(values = viridis(2), name = 'Predator') +
+  expand_limits(x = 0, y=0) + 
+  labs(x = 'Predator mass at start (mg)',
+       y = 'Product mass (mg)',
+       title = 'Predator start mass vs feces') +
+  theme_flat
+
+# pred_remains <- 
+assay_wide_data %>% 
+  ggplot(aes(predator_start_mass_mg, 
+             remains_mg, 
+             color = predator_type)) + 
+  geom_point() + 
+  scale_color_manual(values = viridis(2), name = 'Predator') +
+  expand_limits(x = 0, y=0) + 
+  labs(x = 'Predator mass at start (mg)',
+       y = 'Product mass (mg)',
+       title = 'Predator start mass vs remains') +
+  # theme(legend.title = element_blank()) + 
+  theme_flat
+
+# grid.arrange(pred_feces, pred_remains, ncol=2)
+```
+
+
+```{r}
+## Not showing this--- ANOVA for predator type and start mass as factors to predict products mass
+pred_mass_mod <- aov(feces_mg ~ predator_type + predator_start_mass_mg,
+                 assay_wide_data)
+summary(pred_mass_mod)
+
+```
+
+
+### Plot predators by feeding strategy vs foraging by-products
+
+```{r}
+vars_to_keep <- c('feces', 'remains', 'predator_start_mass', 'predator_postprandial_mass')
+
+assay_long_data <- assay_wide_data %>% 
+  pivot_longer(-c(predator_type, predator_id),
+               names_pattern = '(.*)_mg',
+               names_to = 'product', 
+               values_to = 'mass') %>% 
+  filter(product %in% vars_to_keep) %>% 
+  mutate(product = factor(product, levels = c('feces', 'remains', 'predator_start_mass', 'predator_postprandial_mass')),
+         predator_type = factor(predator_type, levels = c('mantid', 'spider'))) %>% 
+  group_by(predator_type, product)
+
+assay_long_data %>% 
+  filter(product %in% c('feces', 'remains')) %>% 
+  group_by(predator_type, product) %>% 
+  summarize(mean_mass = mean(mass), 
+            se_mass = se(mass)) %>% 
+  ggplot(aes(product, 
+             mean_mass, 
+             fill = predator_type)) + 
+  geom_col(position = 'dodge') + 
+  geom_errorbar(aes(ymin = mean_mass - se_mass,
+                    ymax = mean_mass + se_mass),
+                position = position_dodge(width = 0.9),
+                width = 0.15) +
+  geom_point(data = filter(assay_long_data, product %in% c('feces', 'remains')),
+             aes(product, 
+                 mass),
+             position = position_jitterdodge(dodge.width=0.9)) + 
+  scale_fill_manual(values = viridis(2), name = 'Predator') +
+  labs(x = 'Necromass product',
+       y = 'Dry mass (mg)',
+       title = 'Mantid + spider feces + waste quantities') +
+  theme_flat
+
+
+# summarize data
+
+assay_long_data %>% 
+  filter(product %in% c('feces', 'remains')) %>% 
+  group_by(predator_type, product) %>% 
+  summarize(mean_mass = mean(mass), 
+            se_mass = se(mass),
+            n = n()) %>% 
+  knitr::kable()
+```
+
+
+
+## Elemental analysis data
+
+Import elemental analysis
+
+```{r}
+# this is data from the elemental analysis of the assay
+# both the calibration ghops and the predator products
+
+## read data from two plates
+e_plate1 <- read_excel(here::here('data/siel data/YT-F4.1_CN_Rep, SIEL SO#1768.xls'), skip = 2) %>% 
+  clean_names() %>% 
+  rename(mass_mg = weight_mg)
+
+e_plate2 <- read_excel(here::here('data/siel data/YT-F4.2-PPg_CN_Rep, SIEL SO#1768.xls'), skip = 2) %>% 
+  clean_names() %>% 
+  rename(mass_mg = weight_mg)
+
+# join two plates and remove instrumentation samples
+e_0all <- full_join(e_plate1, e_plate2) %>% 
+  filter(sample_id != 'spinach',
+         sample_id != 'MR08-R') %>% # remove MR08-R because it didn't eat during assay
+  mutate(exp_id = substr(sample_id, 1,1))
+```
+
+Splitting the SIEL plates' data into subsets of data frames according to the product type
+
+(Can't really infer individualized product quantity with only one data point)
+
+```{r}
+
+# split dataset into subsets according to the groups above
+e_preds <- e_0all %>% 
+  filter(exp_id == 'M' | exp_id == 'S') %>% 
+  mutate(prod_type = 'predator prods',
+         exp_stage = 'assay products',
+         predator_id = sub("\\-.*", "", sample_id),
+         sample_type = substrRight(sample_id, 1))
+e_preds$sample_type[e_preds$sample_type == 'F'] <- 'feces'
+e_preds$sample_type[e_preds$sample_type == 'R'] <- 'prey remains'
+e_preds$sample_type[e_preds$sample_type == 'S'] <- 'silk'
+e_preds$sample_type <- as.factor(e_preds$sample_type)
+
+e_ghops_assay <- e_0all %>% 
+  filter(exp_id == 'F') %>% 
+  mutate(prod_type = 'calibration ghops',
+         exp_stage = 'assay prep',
+         ghop_id = substrRight(sample_id, 3),
+         sample_type = 'ghop')
+
+e_ghops_mesocosm <- e_0all %>% 
+  filter(exp_id == 'G') %>% 
+  mutate(prod_type = 'calib ghops',
+         exp_name = 'exp samples',
+         ghop_num = substr(sample_id, 1, 3),
+         week_num = substr(sample_id, 5, nchar(sample_id)),
+         sample_type = 'ghop')
+
+```
+
+Now we've got three datasets for the three types of physical samples we have in our hands: assay calibration prey, assay predator products, experimental calibration prey
+
+## UNTESTED CODE FOR MERGING GHOP DATA
+
+```{r}
+
+#=====
+# calculate elemental composition of feeding 4 calibration ghops
+
+# 1. merge elemental data with earlier data
+ghops_all <- left_join(e_ghops, a_ghops1)
+
+# 2. summarize data
+summary(ghops_all[c('mass_mg', 'C_N_ratio')])
+
+#====
+# calculate elemental composition of feed4 assay predator products
+# 1. melt lab data to have prey remains + feces data separately
+# a_preds0 <- pivot_longer()
+
+# 2. merge elemental data with lab data
+preds_all <- left_join(e_preds, a_preds3)
+
+fact_cols <- c('sample_type', 'prod_type', 'predator_type', 'expID')
+preds_plots <- preds_all %>% 
+  mutate_at(fact_cols, list(~ factor(.))) %>% 
+  filter(sample_type != 'silk') %>% 
+  group_by(predator_type, sample_type) %>% 
+  ggplot(aes(x = sample_type,
+             y = C_N_ratio,
+             group = predatorID)) + 
+  geom_boxplot() +
+  facet_grid(. ~ predator_type) + 
+  theme_flat
+
+ggplotly(preds_plots)
+
+# 
+# preds_mantid <- filter(preds_all, predator_type == 'mantid')
+# preds_spider <- filter(preds_all, predator_type == 'spider')
+# 
+# # this is elemental data only, not for mass
+# ggboxplot(preds_mantid, x = 'sample_type', y = 'C_N_ratio') 
+# ggboxplot(preds_spider, x = 'sample_type', y = 'C_N_ratio')
+# 
+# 3. summarize + viz
+# preds_summ <- summarize(preds_all[c('C_N_ratio')])
+# ????????????????????????????????????????????????????????????
+```
