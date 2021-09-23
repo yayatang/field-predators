@@ -1,0 +1,309 @@
+---
+title: 'Exp 3 Results: Plant Isotopes at Experiment End'
+author: "Y Tang"
+date: "19 August 2021"
+output: 
+  html_document: 
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    theme: united
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(knitr)
+library(lme4)
+library(lmerTest)
+library(viridis)
+library(emmeans)
+
+source(here::here('src/yaya_fxns.R'))
+# imports isotopes_plants_long
+source(here::here('src/g9.1_isotope_plant_end_import.R'))
+# theme objects are in yaya_fxns.R
+
+
+isotopes_plants_long <- isotopes_plants_long %>%
+  mutate(treatment = factor(treatment, levels = c('ghop', 'mantid', 'spider','control')),
+         fxl_group = factor(fxl_group, levels = c('cer', 'leg', 'C.a.', 'ot')))
+```
+
+## Aboveground plant elemental + isotopic data
+
+We analyzed the 13C and 15N content of homogenized plant matter at the end of the experiment, categorized by functional group. First, lets explore the data distribution.
+
+These are distributions of %C, d13C, %N, and d15N.
+
+(**these graphs can be compressed into a small, four panel table**)
+
+```{r}
+# for generating histograms of initial data analysis
+explore_histogram <- function(var_name) {
+  
+  isotopes_plants_long %>% 
+    filter(analysis == var_name) %>% 
+    ggplot(aes(a_value))+
+    geom_histogram(bins = 10) + 
+    labs(title = paste('Histogram of', var_name, 'values'),
+         x = var_name) +
+    facet_grid(fxl_group ~ treatment) + 
+    theme_light()
+}
+
+par(mar = c(4, 4, .1, .1))
+
+explore_histogram('total_percent_c')
+explore_histogram('d13c')
+explore_histogram('total_percent_n')
+explore_histogram('d15n')
+
+```
+
+
+Here is a plot of paired variables:
+
+```{r}
+
+isotopes_plants_long %>% 
+  pivot_wider(names_from = analysis, values_from = a_value) %>%
+  select(c('total_percent_n', 'd15n','atom_percent_15n', 'total_percent_c', 'd13c','atom_percent_13c')) %>% 
+  pairs()
+
+```
+
+### Elemental data plots
+
+Now lets take a look at the results of elemental analysis between treatments.
+
+```{r}
+# isotopes_plants_summ <-
+isotopes_plants_long %>%
+  # group_by(treatment, analysis, fxl_group) %>%
+  group_by(treatment, analysis) %>%
+  summarize(iso_mean = mean(a_value),
+            iso_se = se(a_value),
+            iso_var = var(a_value),
+            iso_n = n()) %>% 
+  ggplot(aes(fill = treatment, 
+             x = analysis, 
+             y = iso_mean))+
+  geom_col(position = 'dodge') + 
+  # geom_bar(position = 'dodge', stat = 'identity')+
+  # geom_point(data = isotopes_plants_long,
+  #            aes(x = fxl_group,
+  #                y = a_value,
+  #                color = treatment),
+  #            position = position_jitterdodge()) +
+  geom_errorbar(aes(ymin=iso_mean-iso_se, ymax= iso_mean+iso_se), width=.2,
+                position=position_dodge(.9)) +
+  scale_fill_viridis(name = 'Grasshopper fate', discrete = TRUE) +
+  labs(title = 'Comparing all elemental analyses by treatment',
+       x = 'Analysis',
+       y = 'Mean') + 
+  # facet_wrap(vars(analysis), scales = 'free') +
+  theme_angled
+
+## graphing by treatment + fxl_group, faceted by the analysis variable
+isotopes_plants_long %>%
+  # pivot_wider(names_from = 'analysis', values_from = 'a_value') %>% 
+  # group_by(treatment, fxl_group) %>%
+  # View()
+  # summarize(iso_mean = mean(a_value),
+  #           iso_se = se(a_value),
+  #           iso_var = var(a_value),
+  #           iso_n = n()) %>% 
+  ggplot(aes(fill = fxl_group,
+             x = treatment,
+             y = a_value))+
+  geom_boxplot() + 
+  # geom_bar(position = 'dodge', stat = 'identity')+
+  # geom_errorbar(aes(ymin=iso_mean-iso_se, ymax= iso_mean+iso_se), width=.2,
+  # position=position_dodge(.9)) +
+  scale_fill_viridis(discrete = TRUE, option = 'magma') +
+  labs(title = 'Comparing all elemental analyses by treatment') + 
+  facet_grid(treatment*fxl_group ~ analysis, scales = 'free') +
+  theme_angled
+
+
+```
+
+This is for d15N:
+
+```{r}
+plot_analysis <- function(analysis_name) {
+  
+  isotopes_plants_long %>% 
+    filter(analysis == analysis_name) %>%
+    group_by(treatment) %>% 
+    mutate(treatment = factor(treatment, levels = c('ghop', 'mantid', 'spider','control'))) %>% 
+    summarize(mean_analysis = mean(a_value),
+              se_analysis = se(a_value)) %>% 
+    ggplot(aes(x = treatment, y = mean_analysis, fill = treatment))+
+    geom_col(position = 'dodge',
+             color = 'black')+
+    geom_errorbar(aes( ymin = mean_analysis - se_analysis, 
+                       ymax = mean_analysis + se_analysis,
+                       width = 0.15)) +
+    scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+    labs(title = paste(analysis_name, 'in plant tissue at end of experiment'),
+         x = 'Treatment',
+         y = analysis_name) +
+    # scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
+    theme_light()
+}
+
+anova_analysis <- function(analysis_name) {
+  sub_anova <- aov(a_value ~ treatment + block, data = filter(isotopes_plants_long, analysis == analysis_name))
+  print(summary(sub_anova))
+}
+
+lmer_analysis <- function(analysis_name) {
+  sub_lmer <- lme4::lmer(a_value ~ treatment + block, data = filter(isotopes_plants_long, analysis == analysis_name))
+  print(summary(sub_lmer))
+}
+
+
+plot_analysis('d15n')
+# sub_anova <- aov(a_value ~ treatment, data = filter(isotopes_plants_long, analysis == 'd15n'))
+
+anova_analysis('d15n')
+
+
+plot_analysis('total_percent_c')
+anova_analysis('total_percent_c')
+
+plot_analysis('d13c')
+anova_analysis('d13c')
+
+plot_analysis('total_percent_n')
+anova_analysis('total_percent_n')
+
+
+
+```
+
+These are the statistical models for each analysis.
+
+```{r}
+
+isotopes_plants_long$treatment <- fct_relevel(isotopes_plants_long$treatment, c('control', 'ghop', 'mantid', 'spider')) 
+
+all_vars <- unique(isotopes_plants_long$analysis)
+var_name <- all_vars[2] # 1: %n, 2: d15n, 4: total %c, 5: d13c
+
+lmer_plant_analysis <- 
+  lm(a_value ~ treatment + (1|block),
+     filter(isotopes_plants_long, analysis == var_name))
+
+summary(lmer_plant_analysis)
+# emmeans(lmer_plant_analysis, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+
+## check the residuals 
+library(ggpubr)
+ggqqplot(resid(lmer_plant_analysis))
+
+# this is a simple ANOVA, without fxl groups or blocks
+anov_plant_analysis <- 
+  aov(a_value ~ treatment, #+ block,
+      filter(isotopes_plants_long, analysis == var_name))
+summary(anov_plant_analysis)
+
+```
+
+After running analyses on each of the four analysis variables, none had a significant overall effect of treatment.
+
+
+
+Lets try out ART anova....
+
+```{r}
+library(ARTool)
+
+model_var <- 'total_percent_n'
+artanova_model <- art(a_value ~ treatment + fxl_group + treatment*fxl_group + (1|block),
+                      filter(isotopes_plants_long, analysis == model_var))
+anova(artanova_model)
+```
+
+It agrees.
+
+Now lets try it with the functional group as a predictor variable, because it may be that there is no OVERALL difference between treatments, but specific subgroups within the plant community benefit more from one predator treatment over another.
+
+This is the variable that is being compared:
+
+```{r}
+## all_vars is made of 
+# [1] total % n
+# [2] d15n
+# [3] atom % 15n
+# [4] total % c
+# [5] d13c
+# [6] atom % 13c
+(var_name <- all_vars[1])
+
+## linear mixed model, with blocking as random effect
+lmer_plant_analysis <- 
+  lm(a_value ~ treatment + fxl_group + treatment*fxl_group,
+     filter(isotopes_plants_long, analysis == var_name))
+
+summary(lmer_plant_analysis)
+emmeans(lmer_plant_analysis, pairwise ~ fxl_group) #, lmer.df="satterthwaite") #method 1
+
+## check the residuals 
+library(ggpubr)
+# ggqqplot(resid(lmer_plant_analysis))
+
+```
+
+The results here are for the model `a_value ~ treatment + fxl_group + treatment*fxl_group`, without blocking (as of 2021.08.19 I am running it without blocking, due to singularity issues).
+
+%N: 
+We see a significant effect of N in legumes, which differs from C.arg (the "control" in this model), cereals, and others. (slope 1.0175, p << 0.001). This makes sense. No effect of treatment.
+
+d15N 
+Same results as above. 
+
+%C
+Also higher plant %C in legumes (p < 0.05).
+
+d13C 
+Cereals + legumes differ significantly from C.arg and others.
+
+
+
+## Isotope scatterplot hair graph
+
+Lets look at the isotopic separation for funsies.
+
+```{r}
+iso_summ <- isotopes_plants_long %>%
+  pivot_wider(names_from = analysis, values_from = a_value) %>%
+  group_by(treatment, fxl_group) %>%
+  summarize(mean_d15n = mean(d15n),
+            se_d15n = se(d15n),
+            mean_d13c = mean(d13c),
+            se_d13c = se(d13c),
+            mean_percent_n = mean(total_percent_n),
+            se_percent_n = se(total_percent_n),
+            mean_percent_c = mean(total_percent_c),
+            se_percent_c = se(total_percent_c),
+            n_size = n())
+
+iso_summ %>% 
+  ggplot(aes(x = mean_d13c, 
+             y = mean_d15n, 
+             color = treatment))+
+  geom_point(aes(shape = factor(fxl_group)),
+             size = 2) +
+  geom_errorbar(width = 0.04, aes(ymin = mean_d15n - se_d15n, ymax = mean_d15n + se_d15n))+
+  geom_errorbarh(height = 0.5, aes(xmin = mean_d13c - se_d13c, xmax = mean_d13c + se_d13c))+
+  labs(title = "Trophic position plot (?)")
+
+
+```
+

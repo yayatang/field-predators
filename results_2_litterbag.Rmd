@@ -1,0 +1,449 @@
+---
+title: "Exp 3: Litterbag and ash-free analysis"
+author: "Y Tang"
+date: "18 September 2021"
+output: 
+  html_document: 
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    theme: united
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#=============
+library(tidyverse)
+library(plotly)
+library(janitor)
+library(ggpubr)
+library(viridis)
+library(here)
+library(emmeans)
+source(here::here('src/yaya_fxns.r'))
+
+theme_ash <- function(){  # Creating a function
+  theme_classic() +  # Using pre-defined theme as base
+    theme(axis.text.x = element_text(size = 12, face = "bold"),  # Customizing axes text      
+          axis.text.y = element_text(size = 12, face = "bold"),
+          axis.title = element_text(size = 14, face = "bold"),  # Customizing axis title
+          panel.grid = element_blank(),  # Taking off the default grid
+          plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), units = , "cm"),
+          legend.text = element_text(size = 12, face = "italic"),  # Customizing legend text
+          legend.title = element_text(size = 12, face = "bold"),  # Customizing legend title
+          legend.position = "right",  # Customizing legend position
+          plot.caption = element_text(size = 12))  # Customizing plot caption
+}                                  
+
+graph_levels <- c('ghop', 'mantid', 'spider', 'control')
+model_levels <- c('control', 'ghop', 'mantid', 'spider')
+```
+
+
+# Measuring decompositon
+
+First I wanted to see whether there was evidence of decomposition at the end of the experiment. This requires the dry mass data from W and S litterbags, which were initially weighed by Evya in April 2020, cleaned and re-weighed by Yaya in May 2020. Litterbag data used here is from September 2021, when litter was removed from litterbags and weighed directly.
+
+Subsamples of litter from each litterbag were ashed at 550C for five hours. All litter data were analyzed on an ash-free basis to remove the effect of mineral soil that may have entered the litterbags. 
+
+```{r message=FALSE, warning=FALSE, , message=FALSE}
+## import litterbag litter only data, litterbag ashed data, and the cage treatment data
+
+litter_only_raw <- read_csv(here::here('data/litterbag_litter_only_DATA_2021.09.csv'))%>% 
+  clean_names() %>% 
+  mutate(cage = as.numeric(substr(sample_id, 0, 2)),
+         dir = factor(substr(sample_id, 3, 3)),
+         sampling = ifelse(dir == 'E', 2, 3))
+
+# ashed data including the litter from the start of the experiment
+ashed_raw <- read_csv(here::here('data/litterbag_ash-free_analysis_samp2_samp3_2021.09.csv')) %>% 
+  clean_names() %>% 
+  mutate(cage = as.numeric(substr(sample_id, 0, 2)),
+         dir = factor(substr(sample_id, 3, 3)))
+
+cage_treatments <- read_csv(here::here('results/g1_updated_cages_wk9.csv')) %>% 
+  select(-predatorID, -position)
+
+# import experimental start litter mass
+litter_start_raw <- read_csv(here::here('data/litterbag_DATA_2019.07.11.csv')) %>% 
+  clean_names() %>% 
+  rename(dir = posit,
+         litter_start_mass = litter_mass) %>% 
+  filter(cage != 3,
+         cage != 26) #cages that were destroyed early on
+
+#join litter data with cage info
+litter_only_data <- left_join(litter_only_raw, cage_treatments) %>%
+  mutate(treatment = fct_relevel(treatment, c('control', 'ghop', 'mantid', 'spider')))
+
+ash_free_calc <- left_join(ashed_raw, litter_only_data) %>% 
+  mutate(treatment = fct_relevel(treatment, c('control', 'ghop', 'mantid', 'spider')),
+         sample_to_ash = pre_oven_dry_mass - crucible_weight,
+         litter_ash = post_oven_ash_mass - crucible_weight,
+         ash_proportion = litter_ash / sample_to_ash,
+         litter_corrected = total_litterbag_litter * (1 - ash_proportion)) %>% 
+  select(-crucible_weight, -pre_oven_dry_mass, -post_oven_ash_mass)
+
+ash_free_data <- ash_free_calc %>% 
+  filter(!is.na(cage)) #,
+# cage != 40,
+# cage != 2) ## cage 2 had outlier values of corrected litter (too high, not much decomp overall)
+
+# ashed values for litter at start
+ashed_litter_start <- ash_free_calc %>% 
+  filter(dir == 'i',
+         sample_id != 'Mlit-Pow') %>%  ## powder ash proportion was higher than litter
+  select(sample_id, sample_to_ash, litter_ash, ash_proportion)
+
+litter_start_data <-  litter_start_raw %>% 
+  mutate(ash_proportion = mean(ashed_litter_start$ash_proportion),
+         litter_start_corr_mass = litter_start_mass * (1-ash_proportion),
+         sampling = 0) %>% 
+  select(-closed_bag_litter) %>% 
+  left_join(unique(select(litter_only_data, c('cage', 'dir', 'block', 'treatment', 'replicate')))) %>% 
+  drop_na()
+
+```
+
+
+## Destructively sampled litterbag litter properties
+
+Sampling 2 bags are "East", and sampling 3 from the end of the experiment are the "South" and "West" bags.
+
+These data are for litterbags destructively sampled from cages at various points in the experiment. 
+
+This is a histogram of the litter mass prior to ashing, for all three litterbag directions (coloring to give a sense of the distribution within each litterbag direction).
+
+
+### Histogram of uncorr. litter, all samples together (2 + 3, E-S-W)
+
+Uncolored histogram of litterbag litter mass.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# hist(litter_only_data$total_litterbag_litter)
+litter_only_data %>% 
+  ggplot(aes(x = total_litterbag_litter))+
+  geom_histogram(bins = 10)+
+  theme_ash()
+```
+
+
+### Histogram of all uncorr. litter, by direction
+
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+litter_only_data %>% 
+  ggplot(aes(x = total_litterbag_litter)) + 
+  geom_histogram(bins = 10) +
+  facet_grid(dir  ~ .)+
+  theme_ash()
+```
+
+
+### Litterbag litter by cage and treatment, across entire experiment
+
+This is the uncorrected mass of the litter from the start of the experiment through samplings 2 and 3 (only explicitly weighed litterbags) for each cage (replicate x treatment):
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+litter_start_data %>% ## the raw df has the initial mass
+  rename(total_litterbag_litter = litter_start_mass) %>% 
+  mutate(sampling = 0) %>% 
+  bind_rows(litter_only_data) %>% 
+  ggplot(aes(x = cage,
+             y = total_litterbag_litter,
+             color = dir))+
+  geom_point(aes(shape = treatment)) +
+  scale_color_viridis(discrete = TRUE) + 
+  expand_limits(y = 0) + 
+  facet_wrap(vars(sampling)) +
+  theme_ash()
+
+# facet_grid(replicate ~ treatment) +
+#, direction = -1)
+
+litter_start_data %>% ## the raw df has the initial mass
+  rename(total_litterbag_litter = litter_start_mass) %>% 
+  mutate(sampling = 0,
+         treatment = factor(treatment, graph_levels)) %>% 
+  bind_rows(litter_only_data) %>% 
+  ggplot(aes(x = sampling,
+             y = total_litterbag_litter))+
+  geom_col(aes(fill = treatment)) +
+  scale_fill_viridis(discrete = TRUE) + #, direction = -1) + 
+  expand_limits(y = 0) + 
+  facet_grid(replicate ~ treatment) + ## don't use block, since there are two controls in block 10 and it doubles the values
+  theme_ash() 
+```
+
+
+## Ash-free data properties
+
+### Histogram of ash-free proportion, all samples
+
+All samples together, and then by sampling direction.
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+ash_free_data %>% 
+  ggplot(aes(x = ash_proportion)) + 
+  geom_histogram(bins = 10)+
+  theme_ash()
+
+## plotting some ash free data properties
+ash_free_data %>% 
+  ggplot(aes(x = ash_proportion)) +
+  geom_histogram(bins = 10) + 
+  facet_grid(dir ~ .) +
+  theme_ash()
+```
+
+### Histogram of ash-free proportion, samp 3 only (W + S)
+
+```{r message=FALSE, warning=FALSE, , message=FALSE}
+# spread of corrected litterbag masses
+ash_free_data %>% 
+  filter(dir != 'E') %>%
+  ggplot(aes(x = litter_corrected)) + 
+  # fill = treatment)) + 
+  geom_histogram(bins = 10) + 
+  scale_fill_viridis(discrete = TRUE) +
+  theme_ash()
+```
+
+
+Lets take a look a the _corrected_ masses of the litterbag litter.
+
+Corrected litterbag litter is calculated as the difference between the total litterbag mass minus the ash proportion calculated from the ashed subsample.
+
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+## Creating a boxplot showing the two samplings of corrected litterbag ash-free mass
+
+ash_free_data %>%
+  ggplot(aes(x = treatment,
+             y = ash_proportion)) +
+  geom_boxplot() + 
+  geom_jitter(width = 0.2,
+              aes(color = dir)) +
+  scale_color_viridis(discrete = TRUE) + 
+  # scale_color_viridis(name = 'Treatment', labels = c('Control', 'Carcass', 'Mantid', 'Spider'), discrete = TRUE) +
+  labs(title = "Ash proportion by sampling",
+       x = "\nTreatment",
+       y = "Ash proportion\n",
+       caption = 'Facets are for each of the sampling events (2 and 3).') +
+  expand_limits(y=0) +
+  facet_wrap(vars(sampling)) +
+  theme_ash()
+```
+
+This is the plot of the correct litter masses, from sampling 0 to 2 and 3. 
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+# Creating a boxplot with ggplot for looking at corrected litter amounts
+litter_boxplot_dir <- ash_free_data %>% 
+  bind_rows(rename(litter_start_data, litter_corrected = litter_start_corr_mass)) %>% 
+  ggplot(aes(x = treatment,
+             y = litter_corrected,
+             fill = dir,
+             group = cage)) +
+  geom_boxplot() +
+  geom_jitter() + 
+  scale_fill_viridis(discrete = TRUE) +
+  # scale_fill_manual(values = c("#97F7C5", "#4ED973", "#08873D")) +
+  labs(x = "\nTreatment\n", 
+       y = "\nCorrected litter mass\n",
+       caption = "\n Fig.2 Mass of litter in litterbags at the end of the
+                        experiment.") +
+  # caption = "\nFig.2") +  # Caption for figure in panel
+  expand_limits(y = 0) +
+  facet_wrap(vars(sampling)) +
+  theme_ash()
+
+ggplotly(litter_boxplot_dir)
+```
+
+For reference, this is the ash proportion of the litter at the start (before installation into cages):
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+ashed_litter_start %>% 
+  summarize(mean_ash = mean(ash_proportion)) %>% 
+  knitr::kable()
+
+```
+
+This table is the average ash proportion for each direction x treatment.
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+ash_free_data %>% 
+  group_by(dir, treatment) %>% 
+  summarize(mean_ash_prop = mean(ash_proportion),
+            se_ash_prop = se(ash_proportion),
+            sd_ash_prop = sd(ash_proportion)) %>% 
+  knitr::kable()
+
+```
+
+The previous plot that includes sampling 2 and 3 shows some outlier behavior from cage 2 (low decomposition?). They are removed for the next set of graphs. 
+
+This graph shows the spread of corrected litter, from the beginning to samplings 2 and 3.
+
+```{r echo=FALSE}
+
+ash_free_clean <- ash_free_data %>%
+  filter(cage != 2) 
+
+plotly_ash_free_clean <- ash_free_clean %>% 
+  ggplot(aes(x = treatment,
+             y = litter_corrected)) +
+  geom_boxplot() + 
+  geom_jitter(width = 0.2,
+              aes(color = dir)) + 
+  scale_color_viridis(discrete = TRUE) +
+  # scale_color_viridis(name = 'Treatment', labels = c('Control', 'Carcass', 'Mantid', 'Spider'), discrete = TRUE) +
+  labs(title = "Corrected litter masses",
+       x = "\nTreatment",
+       y = "Corrected litter\n\n",
+       caption = 'Boxplots are of all datapoints, while jittered point show the litterbag source') +
+  expand_limits(y=0) +
+  facet_wrap(vars(sampling)) +
+  theme_ash()
+
+ggplotly(plotly_ash_free_clean)
+```
+
+## Percent mass loss
+
+After adjusting the dry litter mass with ash-free corrections, here is the percent mass loss for samplings 2 and 3: (with cage 2 removed, because it was an outlier for low decomposition in all bags)
+
+```{r message=FALSE, warning=FALSE, message=FALSE}
+percent_decomp <- ash_free_data %>% 
+  left_join(select(litter_start_data, -c('sampling', 'block', 'treatment', 'ash_proportion', 'litter_start_mass')), 
+            by = c('cage', 'dir')) %>% 
+  filter(cage != 2) %>% 
+  mutate(percent_mass_loss = (litter_start_corr_mass - litter_corrected)/ litter_start_corr_mass)
+
+percent_decomp %>% 
+  group_by(sampling, treatment) %>% 
+  summarize(mean_percent_mass_loss = mean(percent_mass_loss),
+            se_percent_mass_loss = se(percent_mass_loss)) %>%
+  knitr::kable()
+
+p <- percent_decomp %>% 
+  ggplot(aes(x = treatment,
+             y = percent_mass_loss,
+             group = cage)) +
+  geom_boxplot() + 
+  geom_jitter(width = 0.2,
+              aes(color = dir)) + 
+  # scale_color_viridis(discrete = TRUE) +
+  scale_color_viridis(name = 'Litterbag\ndirection', discrete = TRUE) +
+  labs(title = "Corrected litter masses",
+       x = "\nTreatment",
+       y = "Percent mass loss\n\n") +
+  expand_limits(y=0) +
+  scale_y_continuous(labels = scales::percent) + 
+  facet_wrap(vars(sampling)) +
+  theme_ash()
+
+ggplotly(p)
+```
+
+And again, with sampling 3 separated out.
+
+```{r}
+plot_percent_decomp <- 
+  percent_decomp %>% 
+  filter(sampling != 2) %>%
+  ggplot(aes(x = treatment,
+             y = percent_mass_loss,
+             group = cage)) +
+  geom_boxplot() + 
+  geom_jitter(width = 0.2,
+              aes(color = dir)) + 
+  # scale_color_viridis(discrete = TRUE) +
+  scale_color_viridis(name = 'Litterbag\ndirection', discrete = TRUE, option = 'turbo') +
+  labs(title = "Corrected litter masses",
+       x = "\nTreatment",
+       y = "Percent mass loss\n\n") +
+  expand_limits(y=0) +
+  scale_y_continuous(labels = scales::percent) + 
+  facet_wrap(vars(dir)) +
+  theme_ash()
+
+ggplotly(plot_percent_decomp)
+```
+
+There are no signs of a treatment difference.
+
+
+
+## Statistical analysis for percent mass loss 
+
+
+### ANOVA with blocks as a random effect
+
+
+The mixed model used here (one-way ANOVA with blocking as a random effect) is:
+percent_mass_loss ~ treatment | (1|block)
+
+
+#### Sampling 2: East
+
+```{r echo=FALSE, message=TRUE, warning=FALSE}
+decomp_s2_anova_full <- lme4::lmer(percent_mass_loss ~ treatment + (1|block), 
+                                   filter(percent_decomp, sampling == 2), 
+                                   REML = FALSE)
+# summary(decomp_s2_anova_full)
+decomp_s2_anova_null <- lme4::lmer(percent_mass_loss ~ 1 + (1|block), 
+                                   filter(percent_decomp, sampling == 2),
+                                   REML = FALSE)
+# summary(decomp_s2_anova_null)
+
+anova(decomp_s2_anova_full, decomp_s2_anova_null) %>% 
+  knitr::kable()
+
+```
+
+REML = FALSE (so ML, maximum likelihood was used, which is what's needed when the fixed effect structure is being tested)
+
+So here's the report from the selected model:
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+decomp_s2_anova_null_REML <- lme4::lmer(percent_mass_loss ~ 1 + (1|block), 
+                                   filter(percent_decomp, sampling == 2),
+                                   REML = TRUE)
+summary(decomp_s2_anova_null_REML)
+
+## just to check....
+# summary(decomp_s2_anova_full)
+```
+
+
+
+#### Sampling 3: West
+
+```{r echo=FALSE, message=TRUE, warning=FALSE}
+## full model with treatment and blocking as random effect
+decomp_s3_anova_full <- lme4::lmer(percent_mass_loss ~ treatment + (1|block), 
+                                   filter(percent_decomp, sampling == 3))
+# summary(decomp_s3_anova_full)
+decomp_s3_anova_null <- lme4::lmer(percent_mass_loss ~ 1 + (1|block), 
+                                   filter(percent_decomp, sampling == 3))
+# summary(decomp_s3_anova_null)
+
+anova(decomp_s3_anova_full, decomp_s3_anova_null) %>% 
+  knitr::kable()
+
+
+# check the residuals of the full model for sampling 2
+plot(decomp_s2_anova_full)
+
+# check the residuals of the full model for sampling 3
+plot(decomp_s3_anova_full)
+
+```
+
+___CONCLUSIONS____ 
+There was no effect of treatment on decomposition rates of litterbags in these cages. 
+

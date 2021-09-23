@@ -1,0 +1,908 @@
+---
+title: 'Exp 3 Results: Soil Sample Analysis'
+author: "Yaya"
+date: "21 September 2021"
+output: 
+  html_document: 
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    theme: united
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warnings = FALSE)
+
+library(tidyverse)
+library(janitor)
+library(viridis)
+library(plotly)
+library(lme4)
+library(emmeans)
+library(gridExtra) # grid.arrange
+library(GGally) #for ggpairs
+source(here::here('src/yaya_fxns.R'))
+
+set.seed(20210921)
+
+## Set up my own themes
+theme_angled <- theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust=1),
+                      panel.background = element_rect(fill = "#f9f9f9",
+                                                      colour = "#f9f9f9"),
+                      panel.border = element_rect(color = "black", fill = NA))
+
+theme_flat <- theme(axis.text.x = element_text(vjust = 1, hjust =0.5),
+                    panel.background = element_rect(fill = "#f9f9f9",
+                                                    colour = "#f9f9f9"),
+                    panel.border = element_rect(color = "black", fill = NA),
+                    legend.position = "none")
+```
+
+# Soil isotope data
+
+
+
+```{r import}
+## Importing all soil isotopic data
+file_names <- c(here::here('data/isotopes_litterbag_soil_plate1a_15n.csv'),
+                here::here('data/isotopes_litterbag_soil_plate1a_13c.csv'),
+                here::here('data/isotopes_litterbag_soil_plate1b_15n.csv'),
+                here::here('data/isotopes_litterbag_soil_plate1b_13c.csv'),
+                here::here('data/isotopes_litterbag_soil_plate2_15n.csv'),
+                here::here('data/isotopes_litterbag_soil_plate2_13c.csv'))
+
+# import data + clean up columns
+plates <- file_names %>% 
+  map_df(~read_csv(., skip=2)) %>% 
+  clean_names() %>% 
+  mutate(cage = substr(sample_id, 1,2)) %>% 
+  rename(d13c = d13cvpdb,
+         d15n = d15nair) %>% 
+  select(-c(sample_wt_mg, x7, x8, x9, ampl_28_m_v, ampl_44_m_v))
+
+# clean up rows
+plates <- plates[rowSums(is.na(plates)) != ncol(plates), ] %>% 
+  filter(sample_id != 'spinach',
+         sample_id != '1577C-B') %>% 
+  select(sample_id, cage, everything())
+
+# to fix the cage names and turn into numeric
+plates$cage <-  plates$cage %>% 
+  str_replace('E', '') %>% 
+  str_replace('W', '')
+plates[,2:8] <- sapply(plates[,2:8],as.numeric)
+
+plates_a <- plates %>% 
+  select(cage, sample_id, total_percent_n, d15n, atom_percent_15n) %>% 
+  filter(complete.cases(.))
+
+plates_b <- plates %>% 
+  select(cage, sample_id, total_percent_c, d13c, atom_percent_13c) %>% 
+  filter(complete.cases(.))
+
+plates_all <- full_join(plates_a, plates_b)
+
+###########################
+# merge with cage treatment data
+
+## vars for releveling factors for graphs versus models
+model_levels <- c('control', 'ghop', 'mantid', 'spider')
+graph_levels <- c('ghop', 'mantid', 'spider', 'control')
+
+
+cage_treatments <- read_csv(here::here('results/g1_updated_cages_wk9.csv')) %>% 
+  clean_names() %>% 
+  select(-c('predator_id', 'position', 'replicate')) %>%
+  mutate(treatment = factor(treatment, levels = model_levels)) ## data default is model levels
+
+# merge isotope data with cage meta-data
+isotopes_raw <- plates_all %>% 
+  left_join(cage_treatments) %>% 
+  select(sample_id, cage, treatment, everything())
+
+## two samples were doubly labeled
+## these lines correctly identify them
+isotopes_raw[which(isotopes_raw$sample_id == '39WU2-1'),]$sample_id <- '39WU2'
+isotopes_raw[which(isotopes_raw$sample_id == '39WU2-2'),]$sample_id <- '39WB2'
+
+# naming it after the two directions/ two samplings it is named after
+isotopes_e_w_prep <- isotopes_raw %>% 
+  mutate(dir = as_factor(if_else(cage>=10, substr(sample_id, 3, 3), substr(sample_id, 2, 2))),
+         sample_type = if_else(cage>=10, substr(sample_id, 4, 4), substr(sample_id, 3, 3)),
+         rep = if_else(cage>=10, substr(sample_id, 5, 5),substr(sample_id, 4, 4)),
+         treatment_vec = as.numeric(treatment)) %>% 
+  select(treatment, sample_id, sample_type, rep, everything()) %>% 
+  arrange(sample_id) %>% 
+  filter(sample_type == 'U')
+
+# only for cores from under litterbags, averaging the two
+isotopes_e_w <- isotopes_e_w_prep %>%
+  filter(sample_type == 'U') %>%
+  group_by(cage, dir) %>%
+  summarise_at(vars(-c('treatment', 'sample_id', 'sample_type', 'rep')), mean) %>%
+  left_join(cage_treatments) %>% 
+  mutate(sampling = ifelse(dir == 'E', 2, 3))
+
+isotopes_e_w_model <- isotopes_e_w %>% 
+  mutate(treatment = factor(treatment, levels = model_levels))
+
+isotopes_e_w_graph <- isotopes_e_w %>% 
+  mutate(treatment = factor(treatment, levels = graph_levels))
+
+```
+
+All data imported, cleaned, and joined. Data frames available are:
+isotopes_e_w (precursors: isotopes_e_w_raw, isotopes_e_w_prep)
+isotopes_e_w_model
+isotopes_e_w_graph
+
+
+## Pivoting the dataset long and summarizing:
+isotopes_under_long
+isotopes_under_long_summ
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# lengthen dataset and summarize
+isotopes_under_long <- isotopes_e_w %>% 
+  ungroup() %>% 
+  pivot_longer(c('total_percent_n', 'd15n', 'atom_percent_15n', 
+                 'total_percent_c', 'd13c', 'atom_percent_13c'), 
+               names_to = "analysis", values_to = "a_value") %>% 
+  mutate(treatment = factor(treatment, levels = graph_levels))
+
+isotopes_under_long_summ <- isotopes_under_long %>% 
+  group_by(analysis, treatment) %>% 
+  summarize(iso_mean = mean(a_value),
+            iso_se = se(a_value),
+            iso_var = var(a_value),
+            iso_n = n())
+
+# knitr::kable(isotopes_under_long_summ)
+```
+
+
+## Exploratory dotplots
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow = c(1, 2))
+dotchart(isotopes_e_w$d15n, 
+         groups = isotopes_e_w$treatment_vec,
+         ylab = 'treatment',
+         xlab = 'd15n', main = 'cleveland dotplot: d15n',
+         pch = isotopes_e_w$treatment_vec)
+dotchart(isotopes_e_w$d13c, 
+         groups = isotopes_e_w$treatment_vec,
+         ylab = 'treatment',
+         xlab = 'd13c', main = 'cleveland dotplot: d13c',
+         pch = isotopes_e_w$treatment_vec)
+
+## Pairs for all variables
+# ggpairs(select(isotopes_e_w, c('total_percent_n', 'd15n','atom_percent_15n', 'total_percent_c', 'd13c','atom_percent_13c')))
+
+```
+
+## Histograms of all analyses
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+##### GRAPHS, exploratory -----
+# super basic histogram
+# hist(isotopes_e_w$d15n)
+
+explore_soil_hist <- function(var_name) {
+  
+  isotopes_under_long %>% 
+    filter(analysis == var_name) %>% 
+    ggplot(aes(a_value))+
+    geom_histogram(bins = 10) + 
+    labs(title = paste('Histogram of', var_name, 'values'),
+         x = var_name) +
+    # facet_grid(. ~ treatment) +
+    theme_light()
+}
+
+par(mfrow = c(2,2))
+
+explore_soil_hist('total_percent_c')
+explore_soil_hist('d13c')
+explore_soil_hist('total_percent_n')
+explore_soil_hist('d15n')
+```
+
+
+### d15N histogram
+
+Here's a histogram of the d15N data for soil samples E + W:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## this is for all soil samples that were analyzed (sampling 2 + 3)
+isotopes_e_w_graph %>% 
+  ggplot(aes(d15n,
+             fill = dir))+
+  geom_histogram(bins = 10) + 
+  facet_grid(dir ~ .)
+
+## just to check, lets take a look also at the original raw data (before averaging the two samples)
+isotopes_e_w_prep %>% 
+  mutate(treatment = factor(treatment, levels = graph_levels)) %>% 
+  ggplot(aes(block, 
+             d15n,
+             color = treatment)) +
+  geom_point()+ 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = 'Original isotope data from soil samples (doubles per cage)') +
+  facet_grid(dir ~ treatment)
+
+isotopes_e_w_prep %>% 
+  mutate(treatment = factor(treatment, levels = graph_levels)) %>% 
+  ggplot(aes(block, 
+             total_percent_n,
+             color = treatment)) +
+  geom_point()+ 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = 'Original isotope data from soil samples (doubles per cage)') +
+  facet_grid(dir ~ treatment)
+
+## same data with d15N values averaged by cage
+isotopes_e_w_graph %>% 
+  ggplot(aes(cage, 
+             d15n,
+             color = treatment)) +
+  geom_point()+ 
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = 'Averaged isotope data from soil samples (one per cage)')+
+  facet_grid(dir ~ treatment)
+```
+
+#### Check z-scores for outliers
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## check the z scores
+isotopes_e_w_graph <- isotopes_e_w_graph %>% 
+  ungroup %>% 
+  mutate(zscore_d15n = (d15n - mean(d15n)) / sd(d15n))
+# View()
+
+```
+
+## Barcharts of all analyses
+
+Take a look at all elemental analyses in one chart, in one axes.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# bar plot of all the variables, one chart
+
+isotopes_under_long_summ %>% 
+  mutate(treatment = fct_relevel(treatment, graph_levels)) %>% 
+  ggplot(aes(fill = treatment, x = analysis, y = iso_mean))+
+  geom_bar(position = 'dodge', stat = 'identity')+
+  geom_errorbar(aes(ymin=iso_mean-iso_se, ymax= iso_mean+iso_se), width=.2,
+                position=position_dodge(.9)) +
+  geom_jitter(data = isotopes_under_long,
+              aes(x= analysis, y = a_value), 
+              position = position_dodge(.9)) +
+  scale_fill_viridis(name = 'Grasshopper fate', discrete = TRUE) +
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = 'Comparing all elemental analyses by treatment',
+       x = 'Analysis',
+       y = 'Mean +- se') +
+  scale_x_discrete(labels=c('Atom percent 13C', 'Atom percent 15N',
+                            'd13C', 'd15N',
+                            'Total percent C', 'Total percent N')) +
+  facet_grid(.~ dir)+
+  theme_angled
+
+# bar plot of all vars, faceted
+
+isotopes_under_long_summ %>% 
+  mutate(treatment = fct_relevel(treatment, graph_levels)) %>% 
+  ggplot(aes(fill = treatment, x = treatment, y = iso_mean))+
+  geom_bar(position = 'dodge', stat = 'identity')+
+  geom_errorbar(aes(ymin=iso_mean-iso_se, ymax= iso_mean+iso_se), width=.2,
+                position=position_dodge(.9)) +
+  geom_jitter(data = isotopes_under_long,
+              aes(x= treatment, y = a_value), 
+              position = position_jitterdodge(.9)) +
+  scale_fill_viridis(name = 'Grasshopper fate', discrete = TRUE) +
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = 'Comparing all elemental analyses by treatment',
+       x = 'Analysis',
+       y = 'Mean +- se') +
+  # scale_x_discrete(labels=c('Atom percent 13C', 'Atom percent 15N',
+  #                           'd13C', 'd15N',
+  # 'Total percent C', 'Total percent N')) +
+  facet_wrap(vars(analysis), scales = 'free')
+# theme_angled
+```
+
+## d15N in the soil
+
+### boxplot
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+###### ...Figure for d15N=====
+
+## boxplot of d15n
+(d15n_box <- isotopes_e_w_graph %>% 
+   ggplot(aes(x = treatment, 
+              y = d15n, 
+              fill = treatment))+
+   geom_boxplot() + 
+   geom_jitter(width = 0.1,
+               aes(color = cage)) + 
+   scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+   facet_grid(treatment ~ dir) +
+   theme_flat)
+
+ggplotly(d15n_box)
+```
+
+### barplots
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## barplot for mean d15N by treatment and direction
+(soil_d15n <- isotopes_e_w_graph %>% 
+   group_by(treatment) %>% 
+   summarize(mean_d15n = mean(d15n),
+             se_d15n = se(d15n)) %>% 
+   ungroup() %>% 
+   ggplot(aes(x = treatment, y = mean_d15n, fill = treatment))+
+   geom_col(position = 'dodge',
+            color = 'black')+
+   # geom_jitter(data = filter(isotopes_e_w, dir == 'W'),
+   geom_jitter(data = isotopes_e_w,
+               aes(x = treatment, 
+                   y = d15n,
+                   group = cage),
+               width = 0.2) +
+   geom_errorbar(aes( ymin = mean_d15n - se_d15n, 
+                      ymax = mean_d15n + se_d15n,
+                      width = 0.15)) +
+   scale_fill_viridis(name = 'Grashopper fate', discrete = TRUE) +
+   labs(title = 'd15N of soil beneath litter bags, samplings 2 and 3',
+        x = 'Treatment',
+        y = 'd13c') +
+   # scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
+   theme_flat + 
+   theme(legend.position = 'none') + 
+   facet_wrap(vars(dir))
+)
+# ggplotly(soil_d13c)
+
+# my_ggsave(here::here('results/soil_d15n.png'))
+```
+
+
+### Statistical analysis
+
+#### Sampling 2 d15N, from under East litterbags
+
+```{r}
+
+d15n_s2_all <- lme4::lmer(d15n ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 2))
+d15n_s2_null <- lme4::lmer(d15n ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 2))
+
+
+summary(d15n_s2_all)
+summary(d15n_s2_null)
+anova(d15n_s2_all, d15n_s2_null)
+
+# not running emmeans because it's not significant
+# d15n_s2_all.emm <- emmeans(d15n_s2_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+# summary(d15n_s2_all.emm)
+```
+Not significant.
+
+```{r}
+(s2_d15n <- isotopes_e_w_graph %>% 
+    filter(sampling == 2) %>% 
+    ggplot(aes(x = cage, 
+               y = d15n, 
+               fill = treatment))+
+    geom_boxplot() + 
+    geom_jitter(width = 0.1,
+                aes(color = cage)) + 
+    scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+    facet_grid(treatment ~ block) +
+    theme_flat)
+```
+
+#### Sampling 3, from under West litterbags
+
+```{r}
+d15n_s3_all <- lme4::lmer(d15n ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 3))
+d15n_s3_null <- lme4::lmer(d15n ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 3))
+
+summary(d15n_s3_all)
+summary(d15n_s3_null)
+anova(d15n_s3_all, d15n_s3_null)
+
+d15n_s3_all.emm <- emmeans(d15n_s3_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+summary(d15n_s3_all.emm)
+
+(s3_d15n <- isotopes_e_w_graph %>% 
+    filter(sampling ==3 ) %>% 
+    ggplot(aes(x = cage, 
+               y = d15n, 
+               fill = treatment))+
+    geom_boxplot() + 
+    geom_jitter(width = 0.1,
+                aes(color = cage)) + 
+    scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+    facet_grid(treatment ~ block) +
+    theme_flat)
+```
+
+
+#### Removing outliers from sampling 3
+
+There was one spider cage that had very high values relative to the other samples in sampling 3 (both raw values were pretty high, same for cage 16 in the sampling 3 control but that one was less extreme relative to the upper IQR). So here are the same analyses with cage 35 removed:
+
+```{r}
+isotopes_no_outliers_s3 <- isotopes_e_w_model %>% 
+  filter(sampling == 3,
+         cage != 35)
+
+d15n_out3_all <- lme4::lmer(d15n ~ treatment + (1|block), isotopes_no_outliers_s3)
+d15n_out3_null <- lme4::lmer(d15n ~ 1 + (1|block), isotopes_no_outliers_s3)
+
+anova(d15n_out3_all, d15n_out3_null)
+
+d15n_out3_all.emm <- emmeans(d15n_out3_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+summary(d15n_out3_all.emm)
+```
+
+## total percent N
+
+### boxplot
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+###### ...Figure for total_percent_n=====
+
+## boxplot of total_percent_n
+(total_n_box <- isotopes_e_w_graph %>% 
+   ggplot(aes(x = treatment, 
+              y = total_percent_n, 
+              fill = treatment))+
+   geom_boxplot() + 
+   geom_jitter(width = 0.1, aes(color = cage)) +
+   scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+   labs(title = 'Total percent N of soil beneath litter bags, sampling 2 and 3',
+        x = 'Treatment',
+        y = 'Total %N',
+        caption = 'Possible outliers: samp3, cage 17; samp 3, cage 23') +
+   facet_wrap(vars(dir)) +
+   theme_flat)
+
+ggplotly(total_n_box)
+
+## checking boxplot outliers function for outliers
+out <- boxplot.stats(isotopes_e_w_graph$total_percent_n)$out
+out_ind <- which(isotopes_e_w_graph$total_percent_n %in% c(out))
+out_ind
+isotopes_e_w_graph[out_ind,]
+
+```
+
+the boxplot out function suggests sampling 2, cages 28 + 30 are outliers. Skeptical.
+
+
+### bar plots
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## barplot for mean total_percent_n by treatment and direction
+(soil_total_n <- isotopes_e_w_graph %>% 
+   group_by(treatment) %>% 
+   summarize(mean_total_n = mean(total_percent_n),
+             se_total_n = se(total_percent_n)) %>% 
+   ungroup() %>% 
+   ggplot(aes(x = treatment, y = mean_total_n, fill = treatment))+
+   geom_col(position = 'dodge',
+            color = 'black')+
+   # geom_jitter(data = filter(isotopes_e_w, dir == 'W'),
+   geom_jitter(data = isotopes_e_w,
+               aes(x = treatment, 
+                   y = total_percent_n,
+                   group = cage),
+               width = 0.2) +
+   geom_errorbar(aes( ymin = mean_total_n - se_total_n, 
+                      ymax = mean_total_n + se_total_n,
+                      width = 0.15)) +
+   scale_fill_viridis(name = 'Grashopper fate', discrete = TRUE) +
+   labs(title = 'Total %N of soil beneath litter bags, sampling 2 and 3',
+        x = 'Treatment',
+        y = 'Total %N') +
+   # scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
+   theme_flat + 
+   theme(legend.position = 'none') + 
+   facet_wrap(vars(dir))
+)
+ggplotly(soil_total_n)
+
+# my_ggsave(here::here('results/soil_total_n.png'))
+```
+
+### Statistical analysis
+
+#### Sampling 2, from under East litterbags
+
+```{r}
+total_n_s2_all <- lme4::lmer(total_percent_n ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 2))
+total_n_s2_null <- lme4::lmer(total_percent_n ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 2))
+
+anova(total_n_s2_all, total_n_s2_null)
+
+```
+Not significant, so no posthoc.
+
+
+#### Sampling 3, from under West litterbags
+
+```{r}
+total_n_s3_all <- lme4::lmer(total_percent_n ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 3))
+total_n_s3_null <- lme4::lmer(total_percent_n ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 3))
+
+anova(total_n_s3_all, total_n_s3_null)
+
+total_n_s3_all.emm <- emmeans(total_n_s3_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+summary(total_n_s3_all.emm)
+
+```
+
+
+#### Removing outliers from sampling 3
+
+
+```{r}
+isotopes_no_outliers_s3 <- isotopes_e_w_model %>% 
+  filter(sampling == 3,
+         cage != 23)
+
+total_n_out3_all <- lme4::lmer(total_percent_n ~ treatment + (1|block), isotopes_no_outliers_s3)
+total_n_out3_null <- lme4::lmer(total_percent_n ~ 1 + (1|block), isotopes_no_outliers_s3)
+
+anova(total_n_out3_all, total_n_out3_null)
+
+total_n_out3_all.emm <- emmeans(total_n_out3_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+summary(total_n_out3_all.emm)
+```
+
+
+
+## d13C in the soil
+
+### boxplot
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+###### ...Figure for d13C=====
+
+## boxplot of d13c
+(d13c_box <- isotopes_e_w_graph %>% 
+   ggplot(aes(x = treatment, 
+              y = d13c, 
+              fill = treatment))+
+   geom_boxplot() + 
+   geom_jitter(width = 0.1,
+               aes(color = cage)) + 
+   scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+   facet_grid(. ~ dir) +
+   theme_flat)
+
+ggplotly(d13c_box)
+```
+
+### barplots
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## barplot for mean d13C by treatment and direction
+(soil_d13c <- isotopes_e_w_graph %>% 
+   group_by(treatment) %>% 
+   summarize(mean_d13c = mean(d13c),
+             se_d13c = se(d13c)) %>% 
+   ungroup() %>% 
+   ggplot(aes(x = treatment, y = mean_d13c, fill = treatment))+
+   geom_col(position = 'dodge',
+            color = 'black')+
+   # geom_jitter(data = filter(isotopes_e_w, dir == 'W'),
+   geom_jitter(data = isotopes_e_w,
+               aes(x = treatment, 
+                   y = d13c,
+                   group = cage),
+               width = 0.2) +
+   geom_errorbar(aes( ymin = mean_d13c - se_d13c, 
+                      ymax = mean_d13c + se_d13c,
+                      width = 0.15)) +
+   scale_fill_viridis(name = 'Grashopper fate', discrete = TRUE) +
+   labs(title = 'd13C of soil beneath litter bags, samplings 2 and 3',
+        x = 'Treatment',
+        y = 'd13C') +
+   # scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
+   theme_flat + 
+   theme(legend.position = 'none') + 
+   facet_wrap(vars(dir))
+)
+
+# my_ggsave(here::here('results/soil_d13c.png'))
+```
+
+
+### Statistical analysis
+
+#### Sampling 2 d13C, from under East litterbags
+
+```{r}
+d13c_s2_all <- lme4::lmer(d13c ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 2))
+d13c_s2_null <- lme4::lmer(d13c ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 2))
+
+summary(d13c_s2_all)
+summary(d13c_s2_null)
+anova(d13c_s2_all, d13c_s2_null)
+
+# not running emmeans because it's not significant
+# d13c_s2_all.emm <- emmeans(d13c_s2_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+# summary(d13c_s2_all.emm)
+```
+Not significant.
+
+
+#### Sampling 3, from under West litterbags
+
+```{r}
+d13c_s3_all <- lme4::lmer(d13c ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 3))
+d13c_s3_null <- lme4::lmer(d13c ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 3))
+
+summary(d13c_s3_all)
+summary(d13c_s3_null)
+anova(d13c_s3_all, d13c_s3_null)
+
+```
+
+
+#### Removing outliers from sampling 3
+
+There was one spider cage that had very high values relative to the other samples in sampling 3 (both raw values were pretty high, same for cage 16 in the sampling 3 control but that one was less extreme relative to the upper IQR). So here are the same analyses with cage 35 removed:
+
+```{r}
+isotopes_no_outliers_s3 <- isotopes_e_w_model %>% 
+  filter(sampling == 3,
+         cage != 35)
+
+d13c_out3_all <- lme4::lmer(d13c ~ treatment + (1|block), isotopes_no_outliers_s3)
+d13c_out3_null <- lme4::lmer(d13c ~ 1 + (1|block), isotopes_no_outliers_s3)
+
+anova(d13c_out3_all, d13c_out3_null)
+
+d13c_out3_all.emm <- emmeans(d13c_out3_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+summary(d13c_out3_all.emm)
+```
+
+## Total percent C
+
+### boxplot
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+###### ...Figure for total_percent_c=====
+
+## boxplot of total_percent_c
+(total_c_box <- isotopes_e_w_graph %>% 
+   ggplot(aes(x = treatment, 
+              y = total_percent_c, 
+              fill = treatment))+
+   geom_boxplot() + 
+   geom_jitter(width = 0.1, aes(color = cage)) +
+   scale_fill_viridis(name = 'Treatment', discrete = TRUE) +
+   labs(title = 'Total percent C of soil beneath litter bags, sampling 2 and 3',
+        x = 'Treatment',
+        y = 'Total %C',
+        caption = 'Possible outliers: samp3, cage 17') +
+   facet_wrap(vars(dir)) +
+   theme_flat)
+
+ggplotly(total_c_box)
+
+## checking boxplot outliers function for outliers
+out <- boxplot.stats(isotopes_e_w_graph$total_percent_c)$out
+out_ind <- which(isotopes_e_w_graph$total_percent_c %in% c(out))
+isotopes_e_w_graph[out_ind,]
+
+```
+
+The boxplot "out" function doesn't suggests any outliers.
+
+
+### bar plots
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## barplot for mean total_percent_c by treatment and direction
+(soil_total_c <- isotopes_e_w_graph %>% 
+   group_by(treatment) %>% 
+   summarize(mean_total_c = mean(total_percent_c),
+             se_total_c = se(total_percent_c)) %>% 
+   ungroup() %>% 
+   ggplot(aes(x = treatment, y = mean_total_c, fill = treatment))+
+   geom_col(position = 'dodge',
+            color = 'black')+
+   # geom_jitter(data = filter(isotopes_e_w, dir == 'W'),
+   geom_jitter(data = isotopes_e_w,
+               aes(x = treatment, 
+                   y = total_percent_c,
+                   group = cage),
+               width = 0.2) +
+   geom_errorbar(aes( ymin = mean_total_c - se_total_c, 
+                      ymax = mean_total_c + se_total_c,
+                      width = 0.15)) +
+   scale_fill_viridis(name = 'Grashopper fate', discrete = TRUE) +
+   labs(title = 'total %C of soil beneath litter bags, sampling 2 and 3',
+        x = 'Treatment',
+        y = 'total %C') +
+   # scale_x_discrete(labels=c('Grasshopper', 'Mantid', 'Spider', 'Control')) +
+   theme_flat + 
+   theme(legend.position = 'none') + 
+   facet_wrap(vars(dir))
+)
+ggplotly(soil_total_c)
+
+# my_ggsave(here::here('results/soil_total_c.png'))
+```
+
+### Statistical analysis
+
+#### Sampling 2, from under East litterbags
+
+```{r}
+total_c_s2_all <- lme4::lmer(total_percent_c ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 2))
+total_c_s2_null <- lme4::lmer(total_percent_c ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 2))
+
+anova(total_c_s2_all, total_c_s2_null)
+
+```
+Not significant, so no posthoc.
+
+
+#### Sampling 3, from under West litterbags
+
+```{r}
+total_c_s3_all <- lme4::lmer(total_percent_c ~ treatment + (1|block), filter(isotopes_e_w_model, sampling == 3))
+total_c_s3_null <- lme4::lmer(total_percent_c ~ 1 + (1|block), filter(isotopes_e_w_model, sampling == 3))
+
+anova(total_c_s3_all, total_c_s3_null)
+```
+Not significant, so no posthoc.
+
+
+#### Removing outliers from sampling 3
+
+
+```{r}
+isotopes_no_outliers_s3 <- isotopes_e_w_model %>% 
+  filter(sampling == 3,
+         cage != 17)
+
+total_c_out3_all <- lme4::lmer(total_percent_c ~ treatment + (1|block), isotopes_no_outliers_s3)
+total_c_out3_null <- lme4::lmer(total_percent_c ~ 1 + (1|block), isotopes_no_outliers_s3)
+
+anova(total_c_out3_all, total_c_out3_null)
+
+total_c_out3_all.emm <- emmeans(total_c_out3_all, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+summary(total_c_out3_all.emm)
+```
+
+Weakly significant without cage 17, though posthoc is not significant.
+
+
+
+
+
+
+
+
+[[---------for analyses until 2021.09.21----------]]
+
+
+```{r}
+## data analysis: trying anovas for d13c ----
+
+## checking the overall model, with all the data 
+d15n_anova_all <- aov(d15n ~ treatment + block + dir, isotopes_e_w_model)
+summary(d15n_anova_all)
+
+d15n_anova_simple <- aov(d15n ~ treatment, isotopes_e_w_model)
+summary(d15n_anova_simple)
+
+anova(d15n_anova_simple, d15n_anova_all)
+```
+
+The effect is weaker/non-existent if we separate it by direction (lmer has singularity issues with random effects). E soil samples have a weak effect, while W has none.
+
+**The posthoc analysis needs fixing--- but it looks like the main difference is between mantid and spider treatments**
+
+```{r}
+##  simple ANOVA and one lmer model
+d15n_anova_block_e <- aov(d15n ~ treatment + block, filter(isotopes_e_w_model, dir == 'E'))
+summary(d15n_anova_block_e)
+
+d15n_anova_block_w <- aov(d15n ~ treatment + block, filter(isotopes_e_w_model, dir == 'W'))
+summary(d15n_anova_block_w)
+
+d15n_lm <- lmer(d15n ~ treatment + (1|block), filter(isotopes_e_w_model, dir == 'W'))
+summary(d15n_lm)
+
+## posthoc analysis for E soil samples (only model that was borderline significant)
+emmeans(d15n_anova_block_e, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+
+# TukeyHSD(d15n_anova_block_e) ## doesn't work
+
+isotopes_e <- filter(isotopes_e_w_model, dir == 'E')
+pairwise.t.test(isotopes_e$d15n, isotopes_e$treatment, p.adj = 'bonf') ## adjustments include bonf, holm
+
+```
+
+
+```{r}
+## Data analysis: d13C by treatment ----
+## remember to use isotope_e_w_model for comparisons against the control
+
+# isotopes_e_w <- mutate(isotopes_e_w,
+#                        d15n_2 = scale(d15n, center = TRUE, scale = TRUE))
+
+lm_soil_d15n <- lme4::lmer(d15n ~ treatment + (1|block), isotopes_e_w_model)
+lm_soil_d15n_null <- lme4::lmer(d15n ~ (1|block), isotopes_e_w_model)
+
+## Nevo's method of determining whether a variable matters and the post hoc
+anova(lm_soil_d15n, lm_soil_d15n_null)
+emmeans(lm_soil_d15n, pairwise ~ treatment)
+
+# # old code
+# summary(lm_soil_d15n)
+# emmeans(lm_soil_d15n, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+
+par(mfrow = c(2,2))
+plot(lm_soil_d15n)
+
+```
+
+If pooling the data between sampling 2 and sampling 3, treatment is significant. Primarily, control and spider differ, and mantid and spider differ. 
+
+
+If looking ONLY at the sampling 3 data...
+
+```{r}
+## Data analysis: d13C by treatment ----
+isotopes_w <- filter(isotopes_e_w_model, dir == 'W')
+
+lm_soil_d15n <- lme4::lmer(d15n ~ treatment + (1|block), isotopes_w)
+lm_soil_d15n_null <- lme4::lmer(d15n ~ (1|block), isotopes_w)
+
+## Nevo's method of determining whether a variable matters and the post hoc
+anova(lm_soil_d15n, lm_soil_d15n_null)
+emmeans(lm_soil_d15n, pairwise ~ treatment)
+
+# # old code
+# summary(lm_soil_d15n)
+# emmeans(lm_soil_d15n, pairwise ~ treatment) #, lmer.df="satterthwaite") #method 1
+
+par(mfrow = c(2,2))
+plot(lm_soil_d15n)
+
+```
+
+Thoughts from organizing code 2021.09.18:
+The results I found in the spring were based on pooled data from sampling 2 and 3. I'm not totally sure how legit that is, and when the data are separated, there is barely any significance of an effect. 
+
+As for the more complete statistical analyses, we see basically the same thing. Only significant when pooled, and there are issues with singularity when block is a random effect.
+
+
+After talking to Dror 2021.09.19:
+```{r}
+## Data analysis: d13C by treatment ----
+isotopes_w <- filter(isotopes_e_w_model, dir == 'W')
+isotopes_e <- filter(isotopes_e_w_model, dir == 'E')
+
+lm_soil_d15n_s2 <- lmer(d15n ~ treatment + (1|block), isotopes_e)
+summary(lm_soil_d15n_s2)
+lm_soil_d15n_s3 <- lmer(d15n ~ treatment + (1|block), isotopes_w)
+summary(lm_soil_d15n_s3)
+
+par(mfrow = c(2,2))
+plot(lm_soil_d15n_s3)
+
+```
+
